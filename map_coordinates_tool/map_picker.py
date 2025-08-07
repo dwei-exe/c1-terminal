@@ -20,7 +20,7 @@ TEXT_COLOR = (255, 255, 255)
 # Calculate button size and spacing
 MARGIN = 50
 GRID_DISPLAY_SIZE = min(WINDOW_WIDTH, WINDOW_HEIGHT) - 2 * MARGIN
-BUTTON_SIZE = 8
+BUTTON_SIZE = 15
 CELL_SIZE = GRID_DISPLAY_SIZE / (GRID_SIZE - 1)
 
 class GridButton:
@@ -134,6 +134,7 @@ def main():
     instruction_text = [
         "Click on lattice points to select them",
         "Selected points will turn orange",
+        "Yellow lines: y=-x+13, y=x+13, y=-x+39, y=x-13",
         "Press SPACE to print coordinates",
         "Press ESC to quit"
     ]
