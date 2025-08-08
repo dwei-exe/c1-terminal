@@ -47,7 +47,7 @@ class AlgoStrategy(gamelib.AlgoCore):
         
         # Primary turret defense positions
         self.primary_turrets = [
-            [[0,13],[1,12],[1,13],[2,12],[2,13],[3,12],[3,13],[4,12],[4,13],[5,12],[5,13],[6,12],[6,13],[7,12],[8,12],[9,12],[10,12],[11,12],[12,12],[13,12],[14,12],[15,12],[16,12],[17,12],[18,12],[19,12],[20,12],[21,12],[21,13],[22,12],[22,13],[23,12],[23,13],[24,12],[24,13],[25,12],[25,13],[26,12],[26,13],[27,13]]
+            [0,13],[1,12],[1,13],[2,12],[2,13],[3,12],[3,13],[4,12],[4,13],[5,12],[5,13],[6,12],[6,13],[7,12],[8,12],[9,12],[10,12],[11,12],[12,12],[13,12],[14,12],[15,12],[16,12],[17,12],[18,12],[19,12],[20,12],[21,12],[21,13],[22,12],[22,13],[23,12],[23,13],[24,12],[24,13],[25,12],[25,13],[26,12],[26,13],[27,13]
         ]
         
         # Secondary turret positions (build after primary complete)
@@ -207,18 +207,44 @@ class AlgoStrategy(gamelib.AlgoCore):
 
     def upgrade_structures(self, game_state):
         """
-        Upgrade structures starting from closest to enemy side to prevent SP overflow
+        Upgrade structures starting from the side taking damage first, then closest to enemy
         """
         sp = int(game_state.get_resource(SP))  # Convert to integer to avoid float errors
         
         # Only upgrade if we have excess SP and all basic structures are built
         if self.all_turrets_complete(game_state):
             
-            # Get all our structures and sort by distance to enemy (closest first)
+            # Determine which side is under attack based on scored_on_locations
+            left_side_damage = 0
+            right_side_damage = 0
+            
+            for damage_location in self.scored_on_locations:
+                if damage_location[0] < 14:  # Left side (closer to [0,13])
+                    left_side_damage += 1
+                else:  # Right side (closer to [27,13])
+                    right_side_damage += 1
+            
+            # Determine priority side (left side prioritized if equal damage)
+            priority_left_side = left_side_damage >= right_side_damage
+            
+            # Get all our structures
             all_positions = self.primary_turrets + self.secondary_turrets + self.support_positions
             
-            # Sort by Y coordinate (higher Y = closer to enemy)
-            sorted_positions = sorted(all_positions, key=lambda pos: pos[1], reverse=True)
+            # Filter positions by side
+            left_side_positions = [pos for pos in all_positions if pos[0] < 14]
+            right_side_positions = [pos for pos in all_positions if pos[0] >= 14]
+            
+            # Sort each side by Y coordinate (higher Y = closer to enemy)
+            left_side_sorted = sorted(left_side_positions, key=lambda pos: pos[1], reverse=True)
+            right_side_sorted = sorted(right_side_positions, key=lambda pos: pos[1], reverse=True)
+            
+            # Create priority order based on which side is taking damage
+            if priority_left_side:
+                sorted_positions = left_side_sorted + right_side_sorted
+                gamelib.debug_write('Prioritizing LEFT SIDE upgrades (damage count: L={}, R={})'.format(left_side_damage, right_side_damage))
+            else:
+                sorted_positions = right_side_sorted + left_side_sorted
+                gamelib.debug_write('Prioritizing RIGHT SIDE upgrades (damage count: L={}, R={})'.format(left_side_damage, right_side_damage))
             
             upgrades_made = 0
             for location in sorted_positions:
@@ -304,7 +330,7 @@ class AlgoStrategy(gamelib.AlgoCore):
         mp = int(game_state.get_resource(MP))  # Convert to integer to avoid float errors
         
         # Phase 1: Setup blocking turrets (MP >= 15, preparation turn)
-        if mp >= 15 and not self.turret_removed_for_attack:
+        if mp >= 20 and not self.turret_removed_for_attack:
             # ADD funnel turret at blocking_turret_position1
             if not game_state.contains_stationary_unit(self.blocking_turret_position1):
                 if game_state.can_spawn(TURRET, self.blocking_turret_position1):
@@ -330,10 +356,15 @@ class AlgoStrategy(gamelib.AlgoCore):
         # Phase 2: Deploy scout attack AND remove funnel turret (attack turn)
         elif self.attack_path_cleared and self.turret_removed_for_attack:
             # Deploy scouts first
-            wave1_scouts = 3
+            available_mp = mp
+            wave1_scouts = 5
+            remaining_mp_after_wave1 = available_mp - wave1_scouts
+            wave2_scouts = max(remaining_mp_after_wave1, 15)  # Ensure minimum 20 total (3 + 17)
+            
+            # Deploy Wave 1: 3 scouts at [13,0]
             actual_wave1 = game_state.attempt_spawn(SCOUT, self.scout_attack_position1, wave1_scouts)
             
-            wave2_scouts = 12  
+            # Deploy Wave 2: Remaining scouts at [11,2] 
             actual_wave2 = game_state.attempt_spawn(SCOUT, self.scout_attack_position2, wave2_scouts)
             
             total_deployed = actual_wave1 + actual_wave2
