@@ -9,8 +9,11 @@ import json
 """
 Turret Defense + Scout Rush Strategy:
 1. Build comprehensive turret defense network
-2. Send interceptors early game until 15+ MP saved
-3. Remove blocking turret and mass scout rush at [14,0]
+2. 3-Phase Attack System (ALWAYS rebuilds defenses after each attack):
+   - Phase 1: ADD funnel turret at [22,11], REMOVE turrets at blocking_turret_position2 (MP >= 15)
+   - Phase 2: Deploy 3 scouts at [13,0] + 12 scouts at [11,2] AND remove funnel turret [22,11] (same turn)
+   - Phase 3: ALWAYS rebuild all blocking_turret_position2 turrets and reset all flags (next turn)
+3. Hard reset to normal defensive state before each new attack cycle
 """
 
 class AlgoStrategy(gamelib.AlgoCore):
@@ -40,23 +43,29 @@ class AlgoStrategy(gamelib.AlgoCore):
         self.scored_on_locations = []
         self.ready_for_scout_rush = False
         self.turret_removed_for_attack = False
+        self.attack_path_cleared = False  # Hardcoded indicator for attack readiness
         
-        # Primary turret defense positions (40 SP initial setup)
-        self.primary_turrets = [[0,13],[1,12],[1,13],[2,11],[2,12],[2,13],[3,12],[4,12],[5,12],[6,12],[7,12],[8,12],[9,12],[10,12],[11,12],[12,12],[13,2],[14,2],[15,3],[16,4],[17,5],[18,6],[19,7],[16,11],[19,11],[20,8],[20,10],[20,11],[21,9],[21,10],[21,11],[23,12],[24,12],[24,13],[25,11],[25,12],[25,13],[26,12],[26,13],[27,13], [12,3], [11,3]]
+        # Primary turret defense positions
+        self.primary_turrets = [
+            [0,13],[1,12],[1,13],[2,11],[2,12],[2,13],[3,12],[4,12],[5,12],[6,12],
+            [7,12],[8,12],[9,12],[10,12],[11,12],[12,12],[13,2],[14,2],[15,3], [4,14],[16,4],
+            [17,5],[18,6],[19,7],[16,11],[19,11],[20,8],[20,10],[20,11],[21,9],[21,10],
+            [21,11],[23,12],[24,12],[24,13],[25,11],[25,12],[25,13],[26,12],[26,13],
+            [27,13],[12,3],[11,3]
+        ]
         
         # Secondary turret positions (build after primary complete)
-        self.secondary_turrets = [[13,12],[14,12],[15,12],[17,12],[18,12]]
+        self.secondary_turrets = [[13,12],[14,12],[15,12],[17,11],[18,11], [17,13], [18,13],[19,13],[20,13],[21,13], [22,13],[23,13]]
         
         # Support positions (build after all turrets complete)
         self.support_positions = [
-            [18,10], [17,10], [18,9], [17,9], [18,9]
+            [18,10], [17,10], [18,9], [17,9], [19,10], [19,9], [20,9], [18,8]
         ]
-        
-        # Attack positions
-        self.scout_attack_position1 = [13,0]
-        self.scout_attack_position2 = [11,2]
-        self.blocking_turret_position1 = [22,11]
-        self.blocking_turret_position2 = [[25,11],[25,12],[26,12],[26,13],[27,13]]
+        # Attack positions and blocking turret logic
+        self.scout_attack_position1 = [13,0]  # 3 scouts
+        self.scout_attack_position2 = [11,2]  # 12 scouts
+        self.blocking_turret_position1 = [22,11]  # ADD during attack prep to funnel
+        self.blocking_turret_position2 = [[25,11],[25,12],[26,12],[26,13],[27,13]]  # REMOVE during attack prep
 
     def on_turn(self, turn_state):
         """
@@ -78,22 +87,43 @@ class AlgoStrategy(gamelib.AlgoCore):
         """
         Build and maintain turret defense network with supports
         """
-        # Priority 1: Check and replace damaged structures (below 50% health)
+        # Priority 1: Rebuild blocking turrets if needed (highest priority, only when not attacking)
+        if not self.ready_for_scout_rush and not self.attack_path_cleared and not self.turret_removed_for_attack:
+            self.rebuild_blocking_turrets_priority(game_state)
+        
+        # Priority 2: Check and replace damaged structures (below 50% health)
         self.replace_damaged_structures(game_state)
         
-        # Priority 2: Ensure all primary turrets are built/replaced
+        # Priority 3: Ensure all primary turrets are built/replaced
         self.build_primary_turrets(game_state)
         
-        # Priority 3: Build secondary turrets if primary is complete
+        # Priority 4: Build secondary turrets if primary is complete
         if self.primary_turrets_complete(game_state):
             self.build_secondary_turrets(game_state)
         
-        # Priority 4: Build support structures if all turrets complete
+        # Priority 5: Build support structures if all turrets complete
         if self.all_turrets_complete(game_state):
             self.build_support_structures(game_state)
             
-        # Priority 5: Upgrade structures when we have excess SP (prevent overflow)
+        # Priority 6: Upgrade structures when we have excess SP (prevent overflow)
         self.upgrade_structures(game_state)
+
+    def rebuild_blocking_turrets_priority(self, game_state):
+        """
+        Rebuild blocking turrets with TOP PRIORITY when not in attack mode
+        """
+        turrets_rebuilt = 0
+        
+        # Rebuild all turrets in blocking_turret_position2 with highest priority
+        for location in self.blocking_turret_position2:
+            if not game_state.contains_stationary_unit(location):
+                if game_state.can_spawn(TURRET, location):
+                    game_state.attempt_spawn(TURRET, location)
+                    turrets_rebuilt += 1
+                    gamelib.debug_write('HIGH PRIORITY: Rebuilt blocking turret at {}'.format(location))
+        
+        if turrets_rebuilt > 0:
+            gamelib.debug_write('HIGH PRIORITY REBUILD: {} blocking turrets restored'.format(turrets_rebuilt))
 
     def replace_damaged_structures(self, game_state):
         """
@@ -104,9 +134,12 @@ class AlgoStrategy(gamelib.AlgoCore):
         # Check all turret positions (primary + secondary)
         all_turret_positions = self.primary_turrets + self.secondary_turrets
         for location in all_turret_positions:
-            # Skip blocking turret if we're preparing for attack
-            if (location == self.blocking_turret_position1 or location == self.blocking_turret_position2) and self.ready_for_scout_rush:
-                continue
+            # Skip blocking turrets during attack preparation/execution
+            if self.attack_path_cleared:
+                if location == self.blocking_turret_position1:  # Don't replace funnel turret during attack
+                    continue
+                if location in self.blocking_turret_position2:  # Don't replace removed turrets during attack
+                    continue
                 
             if game_state.contains_stationary_unit(location):
                 units_at_location = game_state.game_map[location]
@@ -146,9 +179,12 @@ class AlgoStrategy(gamelib.AlgoCore):
         turrets_built = 0
         
         for location in self.primary_turrets:
-            # Skip the blocking turret if we're preparing for attack
-            if (location == self.blocking_turret_position1 or location == self.blocking_turret_position2) and self.ready_for_scout_rush:
-                continue
+            # Skip blocking turrets during attack preparation/execution
+            if self.attack_path_cleared:
+                if location == self.blocking_turret_position1:  # Don't build funnel turret during attack
+                    continue
+                if location in self.blocking_turret_position2:  # Don't build removed turrets during attack
+                    continue
                 
             if not game_state.contains_stationary_unit(location):
                 if game_state.can_spawn(TURRET, location):
@@ -192,13 +228,16 @@ class AlgoStrategy(gamelib.AlgoCore):
             
             upgrades_made = 0
             for location in sorted_positions:
-                # Skip if we don't have enough SP or if preparing for scout rush
+                # Skip if we don't have enough SP
                 if sp < 5:
                     break
                     
-                # Skip blocking turret if preparing for attack
-                if (location == self.blocking_turret_position1 or location == self.blocking_turret_position2) and self.ready_for_scout_rush:
-                    continue
+                # Skip blocking turrets during attack preparation/execution
+                if self.attack_path_cleared:
+                    if location == self.blocking_turret_position1:
+                        continue
+                    if location in self.blocking_turret_position2:
+                        continue
                 
                 if game_state.contains_stationary_unit(location):
                     units_at_location = game_state.game_map[location]
@@ -234,9 +273,12 @@ class AlgoStrategy(gamelib.AlgoCore):
     def primary_turrets_complete(self, game_state):
         """Check if all primary turrets are built"""
         for location in self.primary_turrets:
-            # Skip checking blocking turret if we're preparing attack
-            if (location == self.blocking_turret_position1 or location == self.blocking_turret_position2) and self.ready_for_scout_rush:
-                continue
+            # Skip checking blocking turrets during attack preparation/execution
+            if self.attack_path_cleared:
+                if location == self.blocking_turret_position1:
+                    continue
+                if location in self.blocking_turret_position2:
+                    continue
             if not game_state.contains_stationary_unit(location):
                 return False
         return True
@@ -248,13 +290,14 @@ class AlgoStrategy(gamelib.AlgoCore):
 
     def execute_attack_strategy(self, game_state):
         """
-        Execute attack strategy: interceptors early, then scout rush
+        Execute attack strategy: scout rush when ready
         """
-        mp = game_state.get_resource(MP)
+        mp = int(game_state.get_resource(MP))  # Convert to integer to avoid float errors
         
-        # Check if we're ready for scout rush
-        if mp >= 15:
+        # Check if we're ready for scout rush (only when not in attack cycle)
+        if mp >= 15 and not self.ready_for_scout_rush and not self.turret_removed_for_attack:
             self.ready_for_scout_rush = True
+            gamelib.debug_write('Scout rush mode ACTIVATED - MP: {} (Starting new attack cycle)'.format(mp))
             
         if self.ready_for_scout_rush:
             # Execute scout rush sequence
@@ -262,71 +305,74 @@ class AlgoStrategy(gamelib.AlgoCore):
 
     def execute_scout_rush(self, game_state):
         """
-        Execute the scout rush: remove blocking turret BEFORE attack, then deploy 2-wave scout attack
+        Execute the 3-phase scout rush with mandatory defense rebuilding
         """
-        our_mp = int(game_state.get_resource(MP))  # Convert to integer to avoid float errors
-        enemy_mp = int(game_state.get_resource(MP, 1))  # Enemy MP
-        # Phase 1: Remove blocking turret when we're close to attack threshold (but don't attack yet)
-        if our_mp >= 12 and not self.turret_removed_for_attack:
-            if game_state.contains_stationary_unit(self.blocking_turret_position1) or game_state.contains_stationary_unit(self.blocking_turret_position2):
-                game_state.attempt_remove([self.blocking_turret_position1])
-                game_state.attempt_remove([self.blocking_turret_position2])
-                self.turret_removed_for_attack = True
-            return
+        mp = int(game_state.get_resource(MP))  # Convert to integer to avoid float errors
         
-        # Phase 2: Deploy 2-wave scout attack only AFTER turret has been removed (next turn)
-        if our_mp >= 15 and self.turret_removed_for_attack:  # Higher threshold for actual attack
-            # Wave 1: Deploy 5 scouts at position 1 [14,0]
-            wave1_scouts = min(5, our_mp)
-            actual_wave1 = game_state.attempt_spawn(SCOUT, self.scout_attack_position1, wave1_scouts)
-            
-            if actual_wave1 > 0:
-                gamelib.debug_write('SCOUT RUSH WAVE 1: Deployed {} scouts at {}'.format(
-                    actual_wave1, self.scout_attack_position1))
-                
-                # Update MP after wave 1 deployment
-                remaining_mp =our_mp - actual_wave1
-                
-                # Wave 2: Deploy all remaining scouts at position 2 [16,2]
-                if remaining_mp > 0:
-                    wave2_scouts = min(remaining_mp, 20)  # Cap at 20 for wave 2
-                    actual_wave2 = game_state.attempt_spawn(SCOUT, self.scout_attack_position2, wave2_scouts)
-                    
-                    if actual_wave2 > 0:
-                        gamelib.debug_write('SCOUT RUSH WAVE 2: Deployed {} scouts at {}'.format(
-                            actual_wave2, self.scout_attack_position2))
-                    
-                    total_deployed = actual_wave1 + actual_wave2
-                    gamelib.debug_write('TOTAL SCOUT RUSH: {} scouts deployed in 2 waves (Original MP: {})'.format(
-                        total_deployed, our_mp))
-                else:
-                    gamelib.debug_write('SCOUT RUSH: Only wave 1 deployed ({} scouts total)'.format(actual_wave1))
-            else:
-                gamelib.debug_write('SCOUT RUSH: Failed to deploy wave 1 at {} (MP: {})'.format(
-                    self.scout_attack_position1, our_mp))
-
-        def rebuild_blocking_turrets(self, game_state):
-            """
-            Rebuild the blocking turrets when we're done attacking
-            """
-            turrets_rebuilt = 0
-            
-            # Rebuild turret at position 1
+        # Phase 1: Setup blocking turrets (MP >= 15, preparation turn)
+        if mp >= 15 and not self.turret_removed_for_attack:
+            # ADD funnel turret at blocking_turret_position1
             if not game_state.contains_stationary_unit(self.blocking_turret_position1):
                 if game_state.can_spawn(TURRET, self.blocking_turret_position1):
                     game_state.attempt_spawn(TURRET, self.blocking_turret_position1)
-                    turrets_rebuilt += 1
-                    gamelib.debug_write('Rebuilt blocking turret at {}'.format(self.blocking_turret_position1))
+                    gamelib.debug_write('PHASE 1: Added funnel turret at {}'.format(self.blocking_turret_position1))
             
-            # Rebuild turret at position 2  
-            if not game_state.contains_stationary_unit(self.blocking_turret_position2):
-                if game_state.can_spawn(TURRET, self.blocking_turret_position2):
-                    game_state.attempt_spawn(TURRET, self.blocking_turret_position2)
-                    turrets_rebuilt += 1
-                    gamelib.debug_write('Rebuilt blocking turret at {}'.format(self.blocking_turret_position2))
+            # REMOVE all turrets in blocking_turret_position2
+            turrets_removed = 0
+            for location in self.blocking_turret_position2:
+                if game_state.contains_stationary_unit(location):
+                    game_state.attempt_remove([location])
+                    turrets_removed += 1
+                    gamelib.debug_write('PHASE 1: Removed blocking turret at {}'.format(location))
             
-            if turrets_rebuilt > 0:
-                gamelib.debug_write('Defensive perimeter restored: {} blocking turrets rebuilt'.format(turrets_rebuilt))
+            # Set indicators - attack will happen NEXT turn
+            self.turret_removed_for_attack = True
+            self.attack_path_cleared = True
+            gamelib.debug_write('PHASE 1: Attack preparation complete - scout attack NEXT turn (Removed: {})'.format(turrets_removed))
+            
+            # DO NOT deploy scouts this turn - return immediately
+            return
+        
+        # Phase 2: Deploy scout attack AND remove funnel turret (attack turn)
+        elif self.attack_path_cleared and self.turret_removed_for_attack:
+            # Deploy scouts first
+            wave1_scouts = 3
+            actual_wave1 = game_state.attempt_spawn(SCOUT, self.scout_attack_position1, wave1_scouts)
+            
+            wave2_scouts = 12  
+            actual_wave2 = game_state.attempt_spawn(SCOUT, self.scout_attack_position2, wave2_scouts)
+            
+            total_deployed = actual_wave1 + actual_wave2
+            
+            # REMOVE the funnel turret at blocking_turret_position1 during attack
+            if game_state.contains_stationary_unit(self.blocking_turret_position1):
+                game_state.attempt_remove([self.blocking_turret_position1])
+                gamelib.debug_write('PHASE 2: Removed funnel turret at {} during attack'.format(self.blocking_turret_position1))
+            
+            gamelib.debug_write('PHASE 2: Attack executed - {} scouts at {}, {} scouts at {} (Total: {})'.format(
+                actual_wave1, self.scout_attack_position1, actual_wave2, self.scout_attack_position2, total_deployed))
+            
+            # Set flag for mandatory rebuild next turn
+            self.attack_path_cleared = False  # Attack is complete, prepare for rebuild
+            gamelib.debug_write('PHASE 2: Attack complete, defenses will be rebuilt NEXT turn')
+        
+        # Phase 3: ALWAYS rebuild defenses (turn after attack)
+        elif not self.attack_path_cleared and self.turret_removed_for_attack:
+            # ALWAYS rebuild all turrets in blocking_turret_position2
+            turrets_rebuilt = 0
+            for location in self.blocking_turret_position2:
+                if not game_state.contains_stationary_unit(location):
+                    if game_state.can_spawn(TURRET, location):
+                        game_state.attempt_spawn(TURRET, location)
+                        turrets_rebuilt += 1
+                        gamelib.debug_write('PHASE 3: Rebuilt blocking turret at {}'.format(location))
+            
+            # ALWAYS reset all attack mode indicators to normal defensive state
+            self.turret_removed_for_attack = False
+            self.ready_for_scout_rush = False
+            
+            gamelib.debug_write('PHASE 3: MANDATORY REBUILD complete - {} blocking turrets restored, all flags reset'.format(turrets_rebuilt))
+            gamelib.debug_write('PHASE 3: Ready for next attack cycle when MP >= 15')
 
     def on_action_frame(self, turn_string):
         """

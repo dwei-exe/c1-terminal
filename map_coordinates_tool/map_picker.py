@@ -72,7 +72,7 @@ def draw_grid_lines(screen):
         pygame.draw.line(screen, GRID_COLOR, (start_x, start_y), (end_x, end_y), 1)
 
 def draw_boundary_lines(screen):
-    """Draw the four boundary lines: y=-x+13, y=x+14, y=-x+41, y=x-14"""
+    """Draw the four boundary lines: y=-x+13, y=x+13, y=-x+39, y=x-13"""
     
     # Line 1: y = -x + 13
     points1 = []
@@ -84,7 +84,7 @@ def draw_boundary_lines(screen):
     if len(points1) >= 2:
         pygame.draw.lines(screen, LINE_COLOR, False, points1, 3)
     
-    # Line 2: y = x + 14
+    # Line 2: y = x + 13
     points2 = []
     for x in range(GRID_SIZE):
         y = x + 14
@@ -94,7 +94,7 @@ def draw_boundary_lines(screen):
     if len(points2) >= 2:
         pygame.draw.lines(screen, LINE_COLOR, False, points2, 3)
     
-    # Line 3: y = -x + 41
+    # Line 3: y = -x + 39
     points3 = []
     for x in range(GRID_SIZE):
         y = -x + 41
@@ -104,7 +104,7 @@ def draw_boundary_lines(screen):
     if len(points3) >= 2:
         pygame.draw.lines(screen, LINE_COLOR, False, points3, 3)
     
-    # Line 4: y = x - 14
+    # Line 4: y = x - 13
     points4 = []
     for x in range(GRID_SIZE):
         y = x - 14
