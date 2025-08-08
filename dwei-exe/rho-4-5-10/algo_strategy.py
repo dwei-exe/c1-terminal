@@ -13,7 +13,7 @@ Turret Defense + Scout Rush Strategy:
    - Phase 1: ADD funnel turret at [22,11], REMOVE turrets at blocking_turret_position2 (MP >= 15)
    - Phase 2: Deploy 3 scouts at [13,0] + 12 scouts at [11,2] AND remove funnel turret [22,11] (same turn)
    - Phase 3: ALWAYS rebuild all blocking_turret_position2 turrets and reset all flags (next turn)
-3. Hard reset to normal defensive state before each new attack cycle
+3. Hard reset to normal defensive state before each new attack cycles
 """
 
 class AlgoStrategy(gamelib.AlgoCore):
