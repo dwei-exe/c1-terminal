@@ -47,25 +47,19 @@ class AlgoStrategy(gamelib.AlgoCore):
         
         # Primary turret defense positions
         self.primary_turrets = [
-            [0,13],[1,12],[1,13],[2,11],[2,12],[2,13],[3,12],[4,12],[5,12],[6,12],
-            [7,12],[8,12],[9,12],[10,12],[11,12],[12,12],[13,2],[14,2],[15,3], [4,14],[16,4],
-            [17,5],[18,6],[19,7],[16,11],[19,11],[20,8],[20,10],[20,11],[21,9],[21,10],
-            [21,11],[23,12],[24,12],[24,13],[25,11],[25,12],[25,13],[26,12],[26,13],
-            [27,13],[12,3],[11,3]
+            [[0,13],[1,12],[1,13],[2,12],[2,13],[3,12],[3,13],[4,12],[4,13],[5,12],[5,13],[6,12],[6,13],[7,12],[8,12],[9,12],[10,12],[11,12],[12,12],[13,12],[14,12],[15,12],[16,12],[17,12],[18,12],[19,12],[20,12],[21,12],[21,13],[22,12],[22,13],[23,12],[23,13],[24,12],[24,13],[25,12],[25,13],[26,12],[26,13],[27,13]]
         ]
         
         # Secondary turret positions (build after primary complete)
-        self.secondary_turrets = [[13,12],[14,12],[15,12],[17,11],[18,11], [17,13], [18,13],[19,13],[20,13],[21,13], [22,13],[23,13]]
+        self.secondary_turrets = [[4,11],[5,11],[6,11],[21,11],[22,11],[23,11],[24,11],[25,11]]
         
         # Support positions (build after all turrets complete)
-        self.support_positions = [
-            [18,10], [17,10], [18,9], [17,9], [19,10], [19,9], [20,9], [18,8]
-        ]
+        self.support_positions = [[8,9],[8,10],[9,9],[9,10],[10,9],[10,10],[11,9],[11,10],[12,9],[12,10]]
         # Attack positions and blocking turret logic
-        self.scout_attack_position1 = [13,0]  # 3 scouts
-        self.scout_attack_position2 = [11,2]  # 12 scouts
-        self.blocking_turret_position1 = [22,11]  # ADD during attack prep to funnel
-        self.blocking_turret_position2 = [[25,11],[25,12],[26,12],[26,13],[27,13]]  # REMOVE during attack prep
+        self.scout_attack_position1 = [12,1]  # 3 scouts
+        self.scout_attack_position2 = [14,0]  # 12 scouts
+        self.blocking_turret_position1 = [5,10]  # ADD during attack prep to funnel
+        self.blocking_turret_position2 = [[1,12],[1,13],[2,12]]  # REMOVE during attack prep
 
     def on_turn(self, turn_state):
         """
@@ -159,8 +153,8 @@ class AlgoStrategy(gamelib.AlgoCore):
             if game_state.contains_stationary_unit(location):
                 units_at_location = game_state.game_map[location]
                 for unit in units_at_location:
-                    # Check if it's our unit and below 25% health
-                    if unit.player_index == 0 and unit.health < (unit.max_health * 0.25):
+                    # Check if it's our unit and below 50% health
+                    if unit.player_index == 0 and unit.health < (unit.max_health * 0.5):
                         # Remove and replace immediately
                         game_state.attempt_remove([location])
                         if game_state.can_spawn(SUPPORT, location):
