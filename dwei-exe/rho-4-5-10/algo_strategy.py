@@ -49,7 +49,7 @@ class AlgoStrategy(gamelib.AlgoCore):
         self.corner_walls = [[0,13], [27,13]]
         
         # Primary turret defense positions
-        self.primary_turrets = [[0,13],[1,12],[1,13],[2,12],[2,13],[3,12],[4,11],[4,12],[5,11],[6,11],[7,11],[8,11],[10,11],[12,11],[13,11],[15,11],[17,11],[18,11],[19,11],[20,11],[21,11],[22,11],[23,11],[23,12],[24,12],[25,12],[25,13],[26,12],[26,13],[27,13],[13,10],[14,10],[15,10],[9,11],[11,11],[16,11],]
+        self.primary_turrets = [[0,13],[1,12],[2,12],[2,13],[3,12],[4,11],[4,12],[5,11],[6,11],[7,11],[8,11],[10,11],[12,11],[13,11],[15,11],[17,11],[18,11],[19,11],[20,11],[21,11],[22,11],[23,11],[23,12],[24,12],[25,12],[25,13],[26,12],[27,13],[13,10],[14,10],[15,10],[9,11],[11,11],[16,11],]
         
         # Secondary turret positions (build after primary complete)
         self.secondary_turrets = []
@@ -60,7 +60,7 @@ class AlgoStrategy(gamelib.AlgoCore):
         self.scout_attack_position1 = [15,1]  # 3 scouts
         self.scout_attack_position2 = [13,0]  # 12 scouts
         # self.blocking_turret_position1 = [5,10]  # ADD during attack prep to funnel
-        self.blocking_turret_position2 = [[25,12],[26,12],[26,13]]  # REMOVE during attack prep
+        self.blocking_turret_position2 = [[25,12],[26,12]]  # REMOVE during attack prep
 
     def on_turn(self, turn_state):
         """
@@ -517,7 +517,7 @@ class AlgoStrategy(gamelib.AlgoCore):
         mp = int(game_state.get_resource(MP))  # Convert to integer to avoid float errors
         
         # Check if we're ready for scout rush (only when not in attack cycle)
-        if mp >= 18 and not self.ready_for_scout_rush and not self.turret_removed_for_attack:
+        if mp >= 12 and not self.ready_for_scout_rush and not self.turret_removed_for_attack:
             self.ready_for_scout_rush = True
             gamelib.debug_write('Scout rush mode ACTIVATED - MP: {} (Starting new attack cycle)'.format(mp))
             
@@ -532,7 +532,7 @@ class AlgoStrategy(gamelib.AlgoCore):
         mp = int(game_state.get_resource(MP))  # Convert to integer to avoid float errors
         
         # Phase 1: Setup blocking turrets (MP >= 15, preparation turn)
-        if mp >= 16 and not self.turret_removed_for_attack:
+        if mp >= 12 and not self.turret_removed_for_attack:
             # ADD funnel turret at blocking_turret_position1
             #if not game_state.contains_stationary_unit(self.blocking_turret_position1):
             #    if game_state.can_spawn(TURRET, self.blocking_turret_position1):
