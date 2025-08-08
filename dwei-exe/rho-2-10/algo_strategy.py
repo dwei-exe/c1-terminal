@@ -459,7 +459,7 @@ class AlgoStrategy(gamelib.AlgoCore):
         mp = int(game_state.get_resource(MP))  # Convert to integer to avoid float errors
         
         # Phase 1: Setup blocking turrets (MP >= 15, preparation turn)
-        if mp >= 15 and not self.turret_removed_for_attack:
+        if mp >= 10 and not self.turret_removed_for_attack:
             # ADD funnel turret at blocking_turret_position1
             #if not game_state.contains_stationary_unit(self.blocking_turret_position1):
             #    if game_state.can_spawn(TURRET, self.blocking_turret_position1):
