@@ -45,20 +45,21 @@ class AlgoStrategy(gamelib.AlgoCore):
         self.turret_removed_for_attack = False
         self.attack_path_cleared = False  # Hardcoded indicator for attack readiness
         
+        # Corner wall positions (replace turrets at [0,13] and [27,13])
+        self.corner_walls = [[0,13], [27,13]]
+        
         # Primary turret defense positions
-        self.primary_turrets = [
-            [0,13],[1,12],[1,13],[2,12],[2,13],[3,12],[3,13],[4,12],[4,13],[5,12],[6,12],[7,12],[8,12],[9,12],[10,12],[11,12],[12,12],[13,12],[14,12],[15,12],[16,11],[17,10],[18,11],[19,12],[20,12],[21,12],[22,12],[23,12],[23,13],[24,12],[24,13],[25,12],[25,13],[26,12],[26,13],[27,13]
-        ]
+        self.primary_turrets = [[0,13],[1,12],[1,13],[2,12],[2,13],[3,12],[4,11],[4,12],[5,11],[6,11],[7,11],[8,11],[9,11],[10,11],[11,11],[12,11],[13,10],[13,11],[14,10],[15,10],[15,11],[16,11],[17,11],[18,11],[19,11],[20,11],[21,11],[22,11],[23,11],[23,12],[24,12],[25,12],[25,13],[26,12],[26,13],[27,13]]
         
         # Secondary turret positions (build after primary complete)
-        self.secondary_turrets = [[4,11],[5,11],[21,11],[22,11],[23,11],[24,11],[25,11], [12,11], [15,11], [9,11]]
+        self.secondary_turrets = []
         
         # Support positions (build after all turrets complete)
-        self.support_positions = [[6,11],[7,11], [8,11], [9,11], [5,10],[6,10],[7,10],[8,10],[9,10]]
+        self.support_positions = [[8,9],[8,10],[9,9],[9,10],[10,9],[10,10],[11,9],[11,10],[12,9],[12,10]]
         # Attack positions and blocking turret logic
-        self.scout_attack_position1 = [14,0]  # 3 scouts
-        self.scout_attack_position2 = [12,1]  # 12 scouts
-        #self.blocking_turret_position1 = [5,10]  # ADD during attack prep to funnel
+        self.scout_attack_position1 = [15,1]  # 3 scouts
+        self.scout_attack_position2 = [13,0]  # 12 scouts
+        # self.blocking_turret_position1 = [5,10]  # ADD during attack prep to funnel
         self.blocking_turret_position2 = [[1,12],[1,13],[2,12]]  # REMOVE during attack prep
 
     def on_turn(self, turn_state):
@@ -81,6 +82,8 @@ class AlgoStrategy(gamelib.AlgoCore):
         """
         Build and maintain turret defense network with supports
         """
+        # Priority 0: Build and maintain corner walls (highest priority)
+        self.build_and_maintain_corner_walls(game_state)
         
         # Priority 1: Rebuild blocking turrets if needed (highest priority, only when not attacking)
         if not self.ready_for_scout_rush and not self.attack_path_cleared and not self.turret_removed_for_attack:
@@ -102,6 +105,46 @@ class AlgoStrategy(gamelib.AlgoCore):
             
         # Priority 6: Upgrade structures when we have excess SP (prevent overflow)
         self.upgrade_structures(game_state)
+
+    def build_and_maintain_corner_walls(self, game_state):
+        """
+        Build and maintain corner walls at [0,13] and [27,13] with instant upgrades
+        """
+        for location in self.corner_walls:
+            wall_needs_attention = False
+            
+            # Check if wall exists and its health
+            if game_state.contains_stationary_unit(location):
+                units_at_location = game_state.game_map[location]
+                for unit in units_at_location:
+                    if unit.player_index == 0:  # Our unit
+                        # Check if health is below 40%
+                        if unit.health < (unit.max_health * 0.4):
+                            wall_needs_attention = True
+                            gamelib.debug_write('Corner wall at {} below 40% health ({}/{}), replacing...'.format(
+                                location, unit.health, unit.max_health))
+                            break
+            else:
+                # No wall exists, need to build one
+                wall_needs_attention = True
+                gamelib.debug_write('No corner wall at {}, building...'.format(location))
+            
+            # Replace/build and upgrade wall if needed
+            if wall_needs_attention:
+                # Remove existing unit if present
+                if game_state.contains_stationary_unit(location):
+                    game_state.attempt_remove([location])
+                
+                # Build new wall
+                if game_state.can_spawn(WALL, location):
+                    if game_state.attempt_spawn(WALL, location):
+                        gamelib.debug_write('Built corner wall at {}'.format(location))
+                        
+                        # Instantly upgrade the wall
+                        if game_state.attempt_upgrade([location]):
+                            gamelib.debug_write('Instantly upgraded corner wall at {}'.format(location))
+                        else:
+                            gamelib.debug_write('Failed to upgrade corner wall at {} (insufficient SP)'.format(location))
 
     def rebuild_blocking_turrets_priority(self, game_state):
         """
@@ -131,8 +174,8 @@ class AlgoStrategy(gamelib.AlgoCore):
         for location in all_turret_positions:
             # Skip blocking turrets during attack preparation/execution
             if self.attack_path_cleared:
-                #if location == self.blocking_turret_position1:  # Don't replace funnel turret during attack
-                #    continue
+                # if location == self.blocking_turret_position1:  # Don't replace funnel turret during attack
+                #     continue
                 if location in self.blocking_turret_position2:  # Don't replace removed turrets during attack
                     continue
                 
@@ -176,8 +219,8 @@ class AlgoStrategy(gamelib.AlgoCore):
         for location in self.primary_turrets:
             # Skip blocking turrets during attack preparation/execution
             if self.attack_path_cleared:
-                #if location == self.blocking_turret_position1:  # Don't build funnel turret during attack
-                #    continue
+                # if location == self.blocking_turret_position1:  # Don't build funnel turret during attack
+                #     continue
                 if location in self.blocking_turret_position2:  # Don't build removed turrets during attack
                     continue
                 
@@ -229,8 +272,8 @@ class AlgoStrategy(gamelib.AlgoCore):
             priority_left_side = left_side_damage >= right_side_damage
             
             # Specific upgrade positions for each side
-            left_side_upgrade_positions = [[2,13], [3,13],[15,11]]
-            right_side_upgrade_positions = [[25,13], [24,13], [26,12], [12,11]]
+            left_side_upgrade_positions = [[2,1], [3,12]]
+            right_side_upgrade_positions = [[24,12], [25,12]]
             
             # Sort each side by Y coordinate (higher Y = closer to enemy)
             left_side_sorted = sorted(left_side_upgrade_positions, key=lambda pos: pos[1], reverse=True)
@@ -252,8 +295,8 @@ class AlgoStrategy(gamelib.AlgoCore):
                     
                 # Skip blocking turrets during attack preparation/execution
                 if self.attack_path_cleared:
-                    #if location == self.blocking_turret_position1:
-                    #    continue
+                    # if location == self.blocking_turret_position1:
+                    #     continue
                     if location in self.blocking_turret_position2:
                         continue
                 
@@ -274,27 +317,36 @@ class AlgoStrategy(gamelib.AlgoCore):
 
     def build_support_structures(self, game_state):
         """
-        Build support structures after all turrets complete
+        Build support structures after all turrets complete - build and immediately upgrade each one
         """
         supports_built = 0
+        supports_upgraded = 0
         
         for location in self.support_positions:
             if not game_state.contains_stationary_unit(location):
                 if game_state.can_spawn(SUPPORT, location):
-                    game_state.attempt_spawn(SUPPORT, location)
-                    supports_built += 1
-                    gamelib.debug_write('Built support at {}'.format(location))
-        
+                    # Build the support
+                    if game_state.attempt_spawn(SUPPORT, location):
+                        supports_built += 1
+                        gamelib.debug_write('Built support at {}'.format(location))
+                        
+                        # Immediately upgrade the support we just built
+                        if game_state.attempt_upgrade([location]):
+                            supports_upgraded += 1
+                            gamelib.debug_write('Immediately upgraded support at {}'.format(location))
+                        else:
+                            gamelib.debug_write('Failed to upgrade support at {} (insufficient SP)'.format(location))
+    
         if supports_built > 0:
-            gamelib.debug_write('Built {} support structures'.format(supports_built))
+            gamelib.debug_write('Built {} support structures, upgraded {} of them'.format(supports_built, supports_upgraded))
 
     def primary_turrets_complete(self, game_state):
         """Check if all primary turrets are built"""
         for location in self.primary_turrets:
             # Skip checking blocking turrets during attack preparation/execution
             if self.attack_path_cleared:
-                #if location == self.blocking_turret_position1:
-                #    continue
+                # if location == self.blocking_turret_position1:
+                #     continue
                 if location in self.blocking_turret_position2:
                     continue
             if not game_state.contains_stationary_unit(location):
@@ -313,7 +365,7 @@ class AlgoStrategy(gamelib.AlgoCore):
         mp = int(game_state.get_resource(MP))  # Convert to integer to avoid float errors
         
         # Check if we're ready for scout rush (only when not in attack cycle)
-        if mp >= 15 and not self.ready_for_scout_rush and not self.turret_removed_for_attack:
+        if mp >= 18 and not self.ready_for_scout_rush and not self.turret_removed_for_attack:
             self.ready_for_scout_rush = True
             gamelib.debug_write('Scout rush mode ACTIVATED - MP: {} (Starting new attack cycle)'.format(mp))
             
@@ -328,7 +380,7 @@ class AlgoStrategy(gamelib.AlgoCore):
         mp = int(game_state.get_resource(MP))  # Convert to integer to avoid float errors
         
         # Phase 1: Setup blocking turrets (MP >= 15, preparation turn)
-        if mp >= 18 and not self.turret_removed_for_attack:
+        if mp >= 16 and not self.turret_removed_for_attack:
             # ADD funnel turret at blocking_turret_position1
             #if not game_state.contains_stationary_unit(self.blocking_turret_position1):
             #    if game_state.can_spawn(TURRET, self.blocking_turret_position1):
@@ -355,15 +407,15 @@ class AlgoStrategy(gamelib.AlgoCore):
         elif self.attack_path_cleared and self.turret_removed_for_attack:
             # Deploy scouts first
             available_mp = mp
-            wave1_scouts = 18
+            wave1_scouts = 5
             remaining_mp_after_wave1 = available_mp - wave1_scouts
-            wave2_scouts = max(remaining_mp_after_wave1, 6)  # Ensure minimum 20 total (3 + 17)
+            wave2_scouts = max(remaining_mp_after_wave1, 11)  # Ensure minimum 20 total (3 + 17)
             
             # Deploy Wave 1: 3 scouts at [13,0]
             actual_wave1 = game_state.attempt_spawn(SCOUT, self.scout_attack_position1, wave1_scouts)
             
             # Deploy Wave 2: Remaining scouts at [11,2] 
-            actual_wave2 = game_state.attempt_spawn(SCOUT, self.scout_attack_position2, 0)
+            actual_wave2 = game_state.attempt_spawn(SCOUT, self.scout_attack_position2, wave2_scouts)
             
             total_deployed = actual_wave2
             
