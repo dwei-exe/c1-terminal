@@ -119,7 +119,7 @@ class AlgoStrategy(gamelib.AlgoCore):
                 for unit in units_at_location:
                     if unit.player_index == 0:  # Our unit
                         # Check if health is below 40%
-                        if unit.health < (unit.max_health * 0.4):
+                        if unit.health < (unit.max_health * 0.75):
                             wall_needs_attention = True
                             gamelib.debug_write('Corner wall at {} below 40% health ({}/{}), replacing...'.format(
                                 location, unit.health, unit.max_health))
@@ -141,10 +141,7 @@ class AlgoStrategy(gamelib.AlgoCore):
                         gamelib.debug_write('Built corner wall at {}'.format(location))
                         
                         # Instantly upgrade the wall
-                        if game_state.attempt_upgrade([location]):
-                            gamelib.debug_write('Instantly upgraded corner wall at {}'.format(location))
-                        else:
-                            gamelib.debug_write('Failed to upgrade corner wall at {} (insufficient SP)'.format(location))
+                        game_state.attempt_upgrade([location])
 
     def rebuild_blocking_turrets_priority(self, game_state):
         """
@@ -444,7 +441,7 @@ class AlgoStrategy(gamelib.AlgoCore):
         mp = int(game_state.get_resource(MP))  # Convert to integer to avoid float errors
         
         # Check if we're ready for scout rush (only when not in attack cycle)
-        if mp >= 18 and not self.ready_for_scout_rush and not self.turret_removed_for_attack:
+        if mp >= 14 and not self.ready_for_scout_rush and not self.turret_removed_for_attack:
             self.ready_for_scout_rush = True
             gamelib.debug_write('Scout rush mode ACTIVATED - MP: {} (Starting new attack cycle)'.format(mp))
             
@@ -459,7 +456,7 @@ class AlgoStrategy(gamelib.AlgoCore):
         mp = int(game_state.get_resource(MP))  # Convert to integer to avoid float errors
         
         # Phase 1: Setup blocking turrets (MP >= 15, preparation turn)
-        if mp >= 10 and not self.turret_removed_for_attack:
+        if mp >= 12 and not self.turret_removed_for_attack:
             # ADD funnel turret at blocking_turret_position1
             #if not game_state.contains_stationary_unit(self.blocking_turret_position1):
             #    if game_state.can_spawn(TURRET, self.blocking_turret_position1):
