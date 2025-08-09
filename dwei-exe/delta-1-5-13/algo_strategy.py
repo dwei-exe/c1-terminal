@@ -514,7 +514,7 @@ class AlgoStrategy(gamelib.AlgoCore):
         mp = int(game_state.get_resource(MP))  # Convert to integer to avoid float errors
         
         # Check if we're ready for scout rush (only when not in attack cycle)
-        if mp >= 12 and not self.ready_for_scout_rush and not self.turret_removed_for_attack:
+        if mp >= 18 and not self.ready_for_scout_rush and not self.turret_removed_for_attack:
             self.ready_for_scout_rush = True
             gamelib.debug_write('Scout rush mode ACTIVATED - MP: {} (Starting new attack cycle)'.format(mp))
             
@@ -529,7 +529,7 @@ class AlgoStrategy(gamelib.AlgoCore):
         mp = int(game_state.get_resource(MP))  # Convert to integer to avoid float errors
         
         # Phase 1: Setup blocking turrets (MP >= 15, preparation turn)
-        if mp >= 12 and not self.turret_removed_for_attack:
+        if mp >= 18 and not self.turret_removed_for_attack:
             # ADD funnel turret at blocking_turret_position1
             #if not game_state.contains_stationary_unit(self.blocking_turret_position1):
             #    if game_state.can_spawn(TURRET, self.blocking_turret_position1):
@@ -558,7 +558,7 @@ class AlgoStrategy(gamelib.AlgoCore):
             available_mp = mp
             wave1_scouts = 5
             remaining_mp_after_wave1 = available_mp - wave1_scouts
-            wave2_scouts = max(remaining_mp_after_wave1, 11)  # Ensure minimum 20 total (3 + 17)
+            wave2_scouts = max(remaining_mp_after_wave1, 13)  # Ensure minimum 20 total (3 + 17)
             
             # Deploy Wave 1: 3 scouts at [13,0]
             actual_wave1 = game_state.attempt_spawn(SCOUT, self.scout_attack_position1, wave1_scouts)
