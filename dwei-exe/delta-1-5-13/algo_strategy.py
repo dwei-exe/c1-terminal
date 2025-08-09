@@ -49,17 +49,17 @@ class AlgoStrategy(gamelib.AlgoCore):
         self.corner_walls = [[0,13], [27,13]]
         
         # Primary turret defense positions
-        self.primary_turrets = [[1,12],[1,13],[2,12],[2,13],[3,13],[4,13],[5,13],[6,13],[7,12],[8,11],[9,10],[10,11],[11,12],[12,12],[13,12],[14,12],[15,12],[16,12],[17,12],[18,12],[19,12],[20,12],[21,12],[22,12],[23,12],[24,12],[24,13],[25,12],[25,13],[26,12],[26,13]]
+        self.primary_turrets = [[1,12],[1,13],[2,12],[2,13],[3,13],[4,13],[5,13],[6,13],[7,12],[8,11],[9,10],[10,11],[11,12],[15,12],[16,12],[17,12],[18,12],[19,12],[20,12],[21,12],[22,12],[23,12],[24,12],[24,13],[25,12],[25,13],[26,12],[26,13], [12,12],[13,12],[14,12]]
         
         # Secondary turret positions (build after primary complete)
-        self.secondary_turrets = [[3,12],[4,11],[4,12],[5,11],[5,12],[24,11],[25,11]]
+        self.secondary_turrets = [[3,12],[4,12],[5,11],[24,11],[25,11]]
         
         # Support positions (build after all turrets complete)
         self.support_positions = [[6,12],[6,11],[5,10],[6,10],[10,9]]
+        
         # Attack positions and blocking turret logic
         self.scout_attack_position1 = [12,1]  # 3 scouts
         self.scout_attack_position2 = [14,0]  # 12 scouts
-        # self.blocking_turret_position1 = [5,10]  # ADD during attack prep to funnel
         self.blocking_turret_position2 = [[1,13],[1,12],[2,12]]  # REMOVE during attack prep
 
     def on_turn(self, turn_state):
@@ -80,31 +80,23 @@ class AlgoStrategy(gamelib.AlgoCore):
 
     def execute_defensive_strategy(self, game_state):
         """
-        Build and maintain turret defense network with supports
+        NEW PRIORITY SYSTEM - Fixed defensive strategy execution
         """
-        # Priority 0: Build and maintain corner walls (highest priority)
+        # Always maintain corner walls first
         self.build_and_maintain_corner_walls(game_state)
         
-        # Priority 1: Rebuild blocking turrets if needed (highest priority, only when not attacking)
-        if not self.ready_for_scout_rush and not self.attack_path_cleared and not self.turret_removed_for_attack:
-            self.rebuild_blocking_turrets_priority(game_state)
+        # STEP 1: Ensure all primary and secondary turrets are built
+        self.build_primary_and_secondary_turrets(game_state)
         
-        # Priority 2: Check and replace damaged structures (below 50% health)
-        self.replace_damaged_structures(game_state)
+        # STEP 2: Mark damaged turrets for removal (below 30% health)
+        self.mark_damaged_turrets_for_removal(game_state)
         
-        # Priority 3: Ensure all primary turrets are built/replaced
-        self.build_primary_turrets(game_state)
+        # STEP 3: Build all support structures (build one, upgrade immediately, then next)
+        self.build_support_structures_sequential(game_state)
         
-        # Priority 4: Build secondary turrets if primary is complete
-        if self.primary_turrets_complete(game_state):
-            self.build_secondary_turrets(game_state)
-        
-        # Priority 5: Build support structures if all turrets complete
-        if self.all_turrets_complete(game_state):
-            self.build_support_structures(game_state)
-            
-        # Priority 6: Upgrade structures when we have excess SP (prevent overflow)
-        self.upgrade_structures(game_state)
+        # STEP 4: Only after all supports are built, upgrade remaining turrets
+        if self.all_supports_built_and_upgraded(game_state):
+            self.upgrade_turrets_by_priority(game_state)
 
     def build_and_maintain_corner_walls(self, game_state):
         """
@@ -139,285 +131,121 @@ class AlgoStrategy(gamelib.AlgoCore):
                 if game_state.can_spawn(WALL, location):
                     if game_state.attempt_spawn(WALL, location):
                         gamelib.debug_write('Built corner wall at {}'.format(location))
-                        
                         # Instantly upgrade the wall
                         game_state.attempt_upgrade([location])
 
-    def rebuild_blocking_turrets_priority(self, game_state):
+    def build_primary_and_secondary_turrets(self, game_state):
         """
-        Rebuild blocking turrets with TOP PRIORITY when not in attack mode
-        """
-        turrets_rebuilt = 0
-        
-        # Rebuild all turrets in blocking_turret_position2 with highest priority
-        for location in self.blocking_turret_position2:
-            if not game_state.contains_stationary_unit(location):
-                if game_state.can_spawn(TURRET, location):
-                    game_state.attempt_spawn(TURRET, location)
-                    turrets_rebuilt += 1
-                    gamelib.debug_write('HIGH PRIORITY: Rebuilt blocking turret at {}'.format(location))
-        
-        if turrets_rebuilt > 0:
-            gamelib.debug_write('HIGH PRIORITY REBUILD: {} blocking turrets restored'.format(turrets_rebuilt))
-
-    def replace_damaged_structures(self, game_state):
-        """
-        Replace any turrets or supports below 50% health immediately
-        """
-        structures_replaced = 0
-        
-        # Check all turret positions (primary + secondary)
-        all_turret_positions = self.primary_turrets + self.secondary_turrets
-        for location in all_turret_positions:
-            # Skip blocking turrets during attack preparation/execution
-            if self.attack_path_cleared:
-                # if location == self.blocking_turret_position1:  # Don't replace funnel turret during attack
-                #     continue
-                if location in self.blocking_turret_position2:  # Don't replace removed turrets during attack
-                    continue
-                
-            if game_state.contains_stationary_unit(location):
-                units_at_location = game_state.game_map[location]
-                for unit in units_at_location:
-                    # Check if it's our unit and below 30% health
-                    if unit.player_index == 0 and unit.health < (unit.max_health * 0.3):
-                        # Remove and replace immediately
-                        game_state.attempt_remove([location])
-                        if game_state.can_spawn(TURRET, location):
-                            game_state.attempt_spawn(TURRET, location)
-                            structures_replaced += 1
-                            gamelib.debug_write('Replaced damaged turret at {} (Health: {}/{})'.format(
-                                location, unit.health, unit.max_health))
-        
-        # Check all support positions
-        for location in self.support_positions:
-            if game_state.contains_stationary_unit(location):
-                units_at_location = game_state.game_map[location]
-                for unit in units_at_location:
-                    # Check if it's our unit and below 30% health
-                    if unit.player_index == 0 and unit.health < (unit.max_health * 0.3):
-                        # Remove and replace immediately
-                        game_state.attempt_remove([location])
-                        if game_state.can_spawn(SUPPORT, location):
-                            game_state.attempt_spawn(SUPPORT, location)
-                            structures_replaced += 1
-                            gamelib.debug_write('Replaced damaged support at {} (Health: {}/{})'.format(
-                                location, unit.health, unit.max_health))
-        
-        if structures_replaced > 0:
-            gamelib.debug_write('Emergency replacement: {} damaged structures rebuilt'.format(structures_replaced))
-
-    def build_primary_turrets(self, game_state):
-        """
-        Build/replace primary turret positions
+        STEP 1: Build all primary and secondary turrets
         """
         turrets_built = 0
         
+        # Build primary turrets first
         for location in self.primary_turrets:
             # Skip blocking turrets during attack preparation/execution
-            if self.attack_path_cleared:
-                # if location == self.blocking_turret_position1:  # Don't build funnel turret during attack
-                #     continue
-                if location in self.blocking_turret_position2:  # Don't build removed turrets during attack
-                    continue
+            if self.attack_path_cleared and location in self.blocking_turret_position2:
+                continue
                 
             if not game_state.contains_stationary_unit(location):
                 if game_state.can_spawn(TURRET, location):
                     game_state.attempt_spawn(TURRET, location)
                     turrets_built += 1
-                    gamelib.debug_write('Built primary turret at {}'.format(location))
+                    gamelib.debug_write('STEP 1: Built primary turret at {}'.format(location))
         
-        if turrets_built > 0:
-            gamelib.debug_write('Built/replaced {} primary turrets'.format(turrets_built))
-
-    def build_secondary_turrets(self, game_state):
-        """
-        Build secondary turret positions after primary complete
-        """
-        turrets_built = 0
-        
+        # Build secondary turrets after primary
         for location in self.secondary_turrets:
             if not game_state.contains_stationary_unit(location):
                 if game_state.can_spawn(TURRET, location):
                     game_state.attempt_spawn(TURRET, location)
                     turrets_built += 1
-                    gamelib.debug_write('Built secondary turret at {}'.format(location))
+                    gamelib.debug_write('STEP 1: Built secondary turret at {}'.format(location))
         
         if turrets_built > 0:
-            gamelib.debug_write('Built {} secondary turrets'.format(turrets_built))
+            gamelib.debug_write('STEP 1 COMPLETE: Built {} turrets'.format(turrets_built))
 
-    def upgrade_structures(self, game_state):
+    def mark_damaged_turrets_for_removal(self, game_state):
         """
-        Coherent upgrade priority system:
-        1. First support at [22,10] - build and upgrade FIRST 
-        2. Priority turrets [2,13], [25,13] - upgrade after first support is handled
-        3. Remaining supports (handled in build_support_structures) - only after priority turrets upgraded
-        4. Secondary turrets [3,12], [25,12] - only after all supports complete
+        STEP 2: Mark turrets below 30% health for removal (they will be rebuilt in STEP 1 next turn)
         """
-        sp = int(game_state.get_resource(SP))  # Convert to integer to avoid float errors
+        turrets_marked = 0
+        all_turret_positions = self.primary_turrets + self.secondary_turrets
         
-        # Only upgrade if we have excess SP and all basic structures are built
-        if self.all_turrets_complete(game_state):
-            upgrades_made = 0
-            
-            # STEP 1: Handle first support [22,10] FIRST - this gets priority over everything
-            first_support_location = [22,10]
-            if self.first_support_needs_upgrade(game_state):
-                if sp >= 5 and game_state.contains_stationary_unit(first_support_location):
-                    units_at_location = game_state.game_map[first_support_location]
-                    for unit in units_at_location:
-                        if unit.player_index == 0 and not unit.upgraded:
-                            if game_state.attempt_upgrade([first_support_location]):
-                                sp -= int(game_state.type_cost(unit.unit_type, upgrade=True)[0])
-                                upgrades_made += 1
-                                gamelib.debug_write('STEP 1: Upgraded first support at {} (SP remaining: {})'.format(
-                                    first_support_location, sp))
-                            break
-            
-            # STEP 2: Priority turrets [2,13], [25,13] - only after first support is handled
-            if self.first_support_complete(game_state):
-                priority_turret_positions = [[24,13], [3,13],[25,12],[2,13],[24,12]]
+        for location in all_turret_positions:
+            # Skip blocking turrets during attack preparation/execution
+            if self.attack_path_cleared and location in self.blocking_turret_position2:
+                continue
                 
-                for location in priority_turret_positions:
-                    if sp < 5:
+            if game_state.contains_stationary_unit(location):
+                units_at_location = game_state.game_map[location]
+                for unit in units_at_location:
+                    if unit.player_index == 0 and unit.health < (unit.max_health * 0.3):
+                        # Mark for removal - it will be rebuilt next turn in STEP 1
+                        game_state.attempt_remove([location])
+                        turrets_marked += 1
+                        gamelib.debug_write('STEP 2: Marked damaged turret at {} for removal (Health: {}/{})'.format(
+                            location, unit.health, unit.max_health))
                         break
-                        
-                    # Skip blocking turrets during attack preparation/execution
-                    if self.attack_path_cleared and location in self.blocking_turret_position2:
-                        continue
-                    
-                    if game_state.contains_stationary_unit(location):
-                        units_at_location = game_state.game_map[location]
-                        for unit in units_at_location:
-                            if unit.player_index == 0 and not unit.upgraded:
-                                if game_state.attempt_upgrade([location]):
-                                    upgrades_made += 1
-                                    sp -= int(game_state.type_cost(unit.unit_type, upgrade=True)[0])
-                                    gamelib.debug_write('STEP 2: Upgraded priority turret at {} (SP remaining: {})'.format(
-                                        location, sp))
-                                    break
-            
-            # STEP 3: Support structures are handled in build_support_structures method
-            # (They get built and upgraded one at a time, but only after priority turrets are upgraded)
-            
-            # STEP 4: Secondary turrets [3,12], [25,12] (only if all supports are placed and upgraded)
-            if self.all_supports_upgraded(game_state):
-                secondary_turret_positions = []
-                
-                for location in secondary_turret_positions:
-                    if sp < 5:
-                        break
-                        
-                    # Skip blocking turrets during attack preparation/execution
-                    if self.attack_path_cleared and location in self.blocking_turret_position2:
-                        continue
-                    
-                    if game_state.contains_stationary_unit(location):
-                        units_at_location = game_state.game_map[location]
-                        for unit in units_at_location:
-                            if unit.player_index == 0 and not unit.upgraded:
-                                if game_state.attempt_upgrade([location]):
-                                    upgrades_made += 1
-                                    sp -= int(game_state.type_cost(unit.unit_type, upgrade=True)[0])
-                                    gamelib.debug_write('STEP 4: Upgraded secondary turret at {} (SP remaining: {})'.format(
-                                        location, sp))
-                                    break
-            
-            if upgrades_made > 0:
-                gamelib.debug_write('Completed {} upgrades this turn'.format(upgrades_made))
+        
+        if turrets_marked > 0:
+            gamelib.debug_write('STEP 2 COMPLETE: Marked {} damaged turrets for removal'.format(turrets_marked))
 
-    def build_support_structures(self, game_state):
+    def build_support_structures_sequential(self, game_state):
         """
-        Build support structures with coherent priority system:
-        1. First support [22,10] gets built immediately (no restrictions)
-        2. Remaining supports only built after priority turrets [2,13], [25,13] are upgraded
-        3. Each support gets upgraded immediately after building
+        STEP 3: Build support structures one by one, upgrading each immediately after building
         """
+        # Only proceed if all turrets are built
+        if not self.all_turrets_built(game_state):
+            gamelib.debug_write('STEP 3 SKIPPED: Not all turrets built yet')
+            return
+        
         supports_built = 0
         supports_upgraded = 0
         
-        first_support_location = [6,12]
-        
-        # CASE 1: First support doesn't exist - build it immediately (highest priority)
-        if not game_state.contains_stationary_unit(first_support_location):
-            if game_state.can_spawn(SUPPORT, first_support_location):
-                if game_state.attempt_spawn(SUPPORT, first_support_location):
-                    supports_built += 1
-                    gamelib.debug_write('Built FIRST support at {} (position 0)'.format(first_support_location))
-                    
-                    # Immediately upgrade the first support we just built
-                    if game_state.attempt_upgrade([first_support_location]):
-                        supports_upgraded += 1
-                        gamelib.debug_write('Immediately upgraded FIRST support at {}'.format(first_support_location))
-                    else:
-                        gamelib.debug_write('Failed to upgrade FIRST support at {} (insufficient SP)'.format(first_support_location))
-            # Exit after handling first support
-            if supports_built > 0 or supports_upgraded > 0:
-                gamelib.debug_write('First support progress: built {}, upgraded {}'.format(supports_built, supports_upgraded))
-            return
-        
-        # CASE 2: First support exists but not upgraded - upgrade it first
-        if self.first_support_needs_upgrade(game_state):
-            units_at_location = game_state.game_map[first_support_location]
-            for unit in units_at_location:
-                if unit.player_index == 0 and not unit.upgraded:
-                    if game_state.attempt_upgrade([first_support_location]):
-                        supports_upgraded += 1
-                        gamelib.debug_write('Upgraded existing FIRST support at {}'.format(first_support_location))
-                    else:
-                        gamelib.debug_write('Failed to upgrade existing FIRST support at {} (insufficient SP)'.format(first_support_location))
-                    break
-            # Exit after handling first support
-            if supports_upgraded > 0:
-                gamelib.debug_write('First support upgrade progress: upgraded {}'.format(supports_upgraded))
-            return
-        
-        # CASE 3: First support is complete, now check priority turrets before building remaining supports
-        if not self.priority_turrets_upgraded(game_state):
-            gamelib.debug_write('First support complete, but priority turrets not upgraded - pausing remaining support building')
-            return
-        
-        # CASE 4: First support complete AND priority turrets upgraded - build remaining supports
-        remaining_support_positions = self.support_positions[1:]  # Skip first support [22,10]
-        
-        # Find the first remaining support position that either doesn't exist or exists but isn't upgraded
-        for i, location in enumerate(remaining_support_positions):
-            actual_position = i + 1  # Since we skipped position 0
-            
+        # Find the first support position that needs building or upgrading
+        for i, location in enumerate(self.support_positions):
             if not game_state.contains_stationary_unit(location):
                 # No support exists, build it
                 if game_state.can_spawn(SUPPORT, location):
                     if game_state.attempt_spawn(SUPPORT, location):
                         supports_built += 1
-                        gamelib.debug_write('Built remaining support at {} (position {})'.format(location, actual_position))
+                        gamelib.debug_write('STEP 3: Built support at {} (position {})'.format(location, i))
                         
-                        # Immediately upgrade the support we just built
-                        if game_state.attempt_upgrade([location]):
-                            supports_upgraded += 1
-                            gamelib.debug_write('Immediately upgraded remaining support at {}'.format(location))
+                        # Immediately try to upgrade it
+                        if game_state.get_resource(SP) >= 5:  # Cost to upgrade support
+                            if game_state.attempt_upgrade([location]):
+                                supports_upgraded += 1
+                                gamelib.debug_write('STEP 3: Immediately upgraded support at {}'.format(location))
+                            else:
+                                gamelib.debug_write('STEP 3: Built support at {} but could not upgrade (insufficient SP)'.format(location))
                         else:
-                            gamelib.debug_write('Failed to upgrade remaining support at {} (insufficient SP)'.format(location))
-                # Only build one support per turn, exit after building
-                break
+                            gamelib.debug_write('STEP 3: Built support at {} but need more SP to upgrade next turn'.format(location))
+                        
+                        # Only build one support per turn, exit
+                        break
+                else:
+                    gamelib.debug_write('STEP 3: Cannot afford to build support at {}'.format(location))
+                    break
             else:
-                # Support exists, check if it's upgraded
+                # Support exists, check if it needs upgrading
                 units_at_location = game_state.game_map[location]
                 for unit in units_at_location:
                     if unit.player_index == 0:  # Our unit
                         if not unit.upgraded:
                             # Support exists but not upgraded, try to upgrade it
-                            if game_state.attempt_upgrade([location]):
-                                supports_upgraded += 1
-                                gamelib.debug_write('Upgraded existing remaining support at {} (position {})'.format(location, actual_position))
+                            if game_state.get_resource(SP) >= 5:
+                                if game_state.attempt_upgrade([location]):
+                                    supports_upgraded += 1
+                                    gamelib.debug_write('STEP 3: Upgraded existing support at {} (position {})'.format(location, i))
+                                else:
+                                    gamelib.debug_write('STEP 3: Failed to upgrade support at {} (insufficient SP)'.format(location))
                             else:
-                                gamelib.debug_write('Failed to upgrade existing remaining support at {} (insufficient SP)'.format(location))
+                                gamelib.debug_write('STEP 3: Support at {} needs upgrading but insufficient SP'.format(location))
                             # Exit after handling this unupgraded support
                             break
                         else:
                             # This support is already upgraded, continue to next position
                             continue
-                # If we reach here and the support was not upgraded, we handled it above and should exit
-                # If it was upgraded, we continue to the next position
+                # Check if we handled an unupgraded support and should exit
                 if game_state.contains_stationary_unit(location):
                     units_at_location = game_state.game_map[location]
                     for unit in units_at_location:
@@ -430,57 +258,108 @@ class AlgoStrategy(gamelib.AlgoCore):
                     break
         
         if supports_built > 0 or supports_upgraded > 0:
-            gamelib.debug_write('Remaining support progress: built {}, upgraded {}'.format(supports_built, supports_upgraded))
+            gamelib.debug_write('STEP 3 COMPLETE: Built {} supports, upgraded {} supports'.format(supports_built, supports_upgraded))
 
-    def first_support_complete(self, game_state):
-        """Check if first support [22,10] is built and upgraded"""
-        first_support_location = [22,10]
+    def upgrade_turrets_by_priority(self, game_state):
+        """
+        STEP 4: Upgrade turrets by priority (only after all supports are built and upgraded)
+        """
+        sp = int(game_state.get_resource(SP))
+        initial_sp = sp
+        upgrades_made = 0
         
-        if not game_state.contains_stationary_unit(first_support_location):
-            return False  # First support not even built
+        # Priority order: closest to enemy front line first
+        priority_turret_positions = [[24,13], [25,13], [3,13], [2,13], [24,12], [25,12]]
         
-        units_at_location = game_state.game_map[first_support_location]
-        for unit in units_at_location:
-            if unit.player_index == 0:
-                return unit.upgraded  # Return whether it's upgraded
-        
-        return False
-
-    def first_support_needs_upgrade(self, game_state):
-        """Check if first support [22,10] exists but needs upgrade"""
-        first_support_location = [22,10]
-        
-        if not game_state.contains_stationary_unit(first_support_location):
-            return False  # First support doesn't exist
-        
-        units_at_location = game_state.game_map[first_support_location]
-        for unit in units_at_location:
-            if unit.player_index == 0:
-                return not unit.upgraded  # Return whether it needs upgrade
-        
-        return False
-
-    def priority_turrets_upgraded(self, game_state):
-        """Check if priority turrets [2,13], [25,13] are upgraded"""
-        priority_turret_positions = [[2,13], [25,13]]
-        
+        # Upgrade priority turrets first
         for location in priority_turret_positions:
+            if sp < 5:  # Not enough SP for upgrades
+                break
+                
+            # Skip blocking turrets during attack preparation/execution
+            if self.attack_path_cleared and location in self.blocking_turret_position2:
+                continue
+            
             if game_state.contains_stationary_unit(location):
                 units_at_location = game_state.game_map[location]
                 for unit in units_at_location:
                     if unit.player_index == 0 and not unit.upgraded:
-                        return False  # Priority turret exists but not upgraded
-            # If turret doesn't exist, we consider it "not ready" for continuing with supports
-            else:
+                        if game_state.attempt_upgrade([location]):
+                            upgrades_made += 1
+                            sp -= 5  # Assume upgrade cost is 5
+                            gamelib.debug_write('STEP 4: Upgraded priority turret at {} (SP remaining: {})'.format(
+                                location, sp))
+                            break
+        
+        # Upgrade remaining primary turrets
+        for location in self.primary_turrets:
+            if sp < 5:
+                break
+                
+            if location in priority_turret_positions:  # Skip already processed
+                continue
+                
+            # Skip blocking turrets during attack preparation/execution
+            if self.attack_path_cleared and location in self.blocking_turret_position2:
+                continue
+            
+            if game_state.contains_stationary_unit(location):
+                units_at_location = game_state.game_map[location]
+                for unit in units_at_location:
+                    if unit.player_index == 0 and not unit.upgraded:
+                        if game_state.attempt_upgrade([location]):
+                            upgrades_made += 1
+                            sp -= 5
+                            gamelib.debug_write('STEP 4: Upgraded primary turret at {} (SP remaining: {})'.format(
+                                location, sp))
+                            break
+        
+        # Upgrade secondary turrets last
+        for location in self.secondary_turrets:
+            if sp < 5:
+                break
+            
+            if game_state.contains_stationary_unit(location):
+                units_at_location = game_state.game_map[location]
+                for unit in units_at_location:
+                    if unit.player_index == 0 and not unit.upgraded:
+                        if game_state.attempt_upgrade([location]):
+                            upgrades_made += 1
+                            sp -= 5
+                            gamelib.debug_write('STEP 4: Upgraded secondary turret at {} (SP remaining: {})'.format(
+                                location, sp))
+                            break
+        
+        if upgrades_made > 0:
+            gamelib.debug_write('STEP 4 COMPLETE: Upgraded {} turrets (SP spent: {})'.format(
+                upgrades_made, initial_sp - sp))
+
+    def all_turrets_built(self, game_state):
+        """
+        Check if all primary and secondary turrets are built
+        """
+        # Check primary turrets
+        for location in self.primary_turrets:
+            # Skip blocking turrets during attack preparation/execution
+            if self.attack_path_cleared and location in self.blocking_turret_position2:
+                continue
+            if not game_state.contains_stationary_unit(location):
                 return False
         
-        return True  # All priority turrets are built and upgraded
+        # Check secondary turrets
+        for location in self.secondary_turrets:
+            if not game_state.contains_stationary_unit(location):
+                return False
+        
+        return True
 
-    def all_supports_upgraded(self, game_state):
-        """Check if all support structures are placed and upgraded"""
+    def all_supports_built_and_upgraded(self, game_state):
+        """
+        Check if all support structures are built and upgraded
+        """
         for location in self.support_positions:
             if not game_state.contains_stationary_unit(location):
-                return False  # Support not even built yet
+                return False  # Support not built yet
             
             units_at_location = game_state.game_map[location]
             for unit in units_at_location:
@@ -489,24 +368,6 @@ class AlgoStrategy(gamelib.AlgoCore):
         
         return True  # All supports are built and upgraded
 
-    def primary_turrets_complete(self, game_state):
-        """Check if all primary turrets are built"""
-        for location in self.primary_turrets:
-            # Skip checking blocking turrets during attack preparation/execution
-            if self.attack_path_cleared:
-                # if location == self.blocking_turret_position1:
-                #     continue
-                if location in self.blocking_turret_position2:
-                    continue
-            if not game_state.contains_stationary_unit(location):
-                return False
-        return True
-
-    def all_turrets_complete(self, game_state):
-        """Check if all turrets (primary + secondary) are built"""
-        return (self.primary_turrets_complete(game_state) and 
-                all(game_state.contains_stationary_unit(loc) for loc in self.secondary_turrets))
-
     def execute_attack_strategy(self, game_state):
         """
         Execute attack strategy: scout rush when ready
@@ -514,7 +375,7 @@ class AlgoStrategy(gamelib.AlgoCore):
         mp = int(game_state.get_resource(MP))  # Convert to integer to avoid float errors
         
         # Check if we're ready for scout rush (only when not in attack cycle)
-        if mp >= 18 and not self.ready_for_scout_rush and not self.turret_removed_for_attack:
+        if mp >= 13 and not self.ready_for_scout_rush and not self.turret_removed_for_attack:
             self.ready_for_scout_rush = True
             gamelib.debug_write('Scout rush mode ACTIVATED - MP: {} (Starting new attack cycle)'.format(mp))
             
@@ -529,13 +390,7 @@ class AlgoStrategy(gamelib.AlgoCore):
         mp = int(game_state.get_resource(MP))  # Convert to integer to avoid float errors
         
         # Phase 1: Setup blocking turrets (MP >= 15, preparation turn)
-        if mp >= 18 and not self.turret_removed_for_attack:
-            # ADD funnel turret at blocking_turret_position1
-            #if not game_state.contains_stationary_unit(self.blocking_turret_position1):
-            #    if game_state.can_spawn(TURRET, self.blocking_turret_position1):
-            #        game_state.attempt_spawn(TURRET, self.blocking_turret_position1)
-            #        gamelib.debug_write('PHASE 1: Added funnel turret at {}'.format(self.blocking_turret_position1))
-            
+        if mp >= 13 and not self.turret_removed_for_attack:
             # REMOVE all turrets in blocking_turret_position2
             turrets_removed = 0
             for location in self.blocking_turret_position2:
@@ -552,26 +407,21 @@ class AlgoStrategy(gamelib.AlgoCore):
             # DO NOT deploy scouts this turn - return immediately
             return
         
-        # Phase 2: Deploy scout attack AND remove funnel turret (attack turn)
+        # Phase 2: Deploy scout attack (attack turn)
         elif self.attack_path_cleared and self.turret_removed_for_attack:
-            # Deploy scouts first
+            # Deploy scouts
             available_mp = mp
             wave1_scouts = 5
             remaining_mp_after_wave1 = available_mp - wave1_scouts
-            wave2_scouts = max(remaining_mp_after_wave1, 13)  # Ensure minimum 20 total (3 + 17)
+            wave2_scouts = max(remaining_mp_after_wave1, 10)  # Ensure minimum scouts
             
-            # Deploy Wave 1: 3 scouts at [13,0]
+            # Deploy Wave 1: scouts at position 1
             actual_wave1 = game_state.attempt_spawn(SCOUT, self.scout_attack_position1, wave1_scouts)
             
-            # Deploy Wave 2: Remaining scouts at [11,2] 
+            # Deploy Wave 2: remaining scouts at position 2
             actual_wave2 = game_state.attempt_spawn(SCOUT, self.scout_attack_position2, wave2_scouts)
             
-            total_deployed = actual_wave2
-            
-            # REMOVE the funnel turret at blocking_turret_position1 during attack
-            #if game_state.contains_stationary_unit(self.blocking_turret_position1):
-            #    game_state.attempt_remove([self.blocking_turret_position1])
-             #   gamelib.debug_write('PHASE 2: Removed funnel turret at {} during attack'.format(self.blocking_turret_position1))
+            total_deployed = actual_wave1 + actual_wave2
             
             gamelib.debug_write('PHASE 2: Attack executed - {} scouts at {}, {} scouts at {} (Total: {})'.format(
                 actual_wave1, self.scout_attack_position1, actual_wave2, self.scout_attack_position2, total_deployed))
@@ -596,7 +446,7 @@ class AlgoStrategy(gamelib.AlgoCore):
             self.ready_for_scout_rush = False
             
             gamelib.debug_write('PHASE 3: MANDATORY REBUILD complete - {} blocking turrets restored, all flags reset'.format(turrets_rebuilt))
-            gamelib.debug_write('PHASE 3: Ready for next attack cycle when MP >= 15')
+            gamelib.debug_write('PHASE 3: Ready for next attack cycle when MP >= 18')
 
     def on_action_frame(self, turn_string):
         """
