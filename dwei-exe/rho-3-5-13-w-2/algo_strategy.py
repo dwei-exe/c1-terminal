@@ -13,7 +13,7 @@ Turret Defense + Scout Rush Strategy:
    - Phase 1: ADD funnel turret at [22,11], REMOVE turrets at blocking_turret_position2 (MP >= 15)
    - Phase 2: Deploy 3 scouts at [13,0] + 12 scouts at [11,2] AND remove funnel turret [22,11] (same turn)
    - Phase 3: ALWAYS rebuild all blocking_turret_position2 turrets and reset all flags (next turn)
-3. Hard reset to normal defensive state before each new attack cycles
+3. Hard reset to normal defensive state before each new attack cycle
 """
 
 class AlgoStrategy(gamelib.AlgoCore):
@@ -49,7 +49,7 @@ class AlgoStrategy(gamelib.AlgoCore):
         self.corner_walls = [[0,13], [27,13]]
         
         # Primary turret defense positions
-        self.primary_turrets = [[0,13],[1,12],[2,12],[2,13],[3,12],[4,11],[4,12],[5,11],[6,11],[7,11],[8,11],[10,11],[12,11],[13,11],[15,11],[17,11],[18,11],[19,11],[20,11],[21,11],[22,11],[23,11],[23,12],[24,12],[25,12],[25,13],[26,12],[27,13],[13,10],[14,10],[15,10],[9,11],[11,11],[16,11],]
+        self.primary_turrets = [[0,13],[1,12],[1,13],[2,12],[2,13],[3,12],[4,11],[4,12],[5,11],[6,11],[7,11],[8,11],[10,11],[12,11],[13,11],[15,11],[17,11],[18,11],[19,11],[20,11],[21,11],[22,11],[23,11],[23,12],[24,12],[25,12],[25,13],[26,12],[26,13],[27,13],[13,10],[14,10],[15,10],[9,11],[11,11],[16,11],]
         
         # Secondary turret positions (build after primary complete)
         self.secondary_turrets = []
@@ -60,7 +60,7 @@ class AlgoStrategy(gamelib.AlgoCore):
         self.scout_attack_position1 = [15,1]  # 3 scouts
         self.scout_attack_position2 = [13,0]  # 12 scouts
         # self.blocking_turret_position1 = [5,10]  # ADD during attack prep to funnel
-        self.blocking_turret_position2 = [[25,12],[26,12]]  # REMOVE during attack prep
+        self.blocking_turret_position2 = [[25,12],[26,12],[26,13]]  # REMOVE during attack prep
 
     def on_turn(self, turn_state):
         """
@@ -141,8 +141,10 @@ class AlgoStrategy(gamelib.AlgoCore):
                         gamelib.debug_write('Built corner wall at {}'.format(location))
                         
                         # Instantly upgrade the wall
-                        game_state.attempt_upgrade([location])
-
+                        if game_state.attempt_upgrade([location]):
+                            gamelib.debug_write('Instantly upgraded corner wall at {}'.format(location))
+                        else:
+                            gamelib.debug_write('Failed to upgrade corner wall at {} (insufficient SP)'.format(location))
 
     def rebuild_blocking_turrets_priority(self, game_state):
         """
@@ -274,6 +276,7 @@ class AlgoStrategy(gamelib.AlgoCore):
                                 gamelib.debug_write('STEP 1: Upgraded first support at {} (SP remaining: {})'.format(
                                     first_support_location, sp))
                             break
+            
             # STEP 2: Priority turrets [2,13], [25,13] - only after first support is handled
             if self.first_support_complete(game_state):
                 priority_turret_positions = [[2,13], [25,13]]
