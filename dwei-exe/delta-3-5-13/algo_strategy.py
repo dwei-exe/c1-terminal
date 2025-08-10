@@ -49,22 +49,18 @@ class AlgoStrategy(gamelib.AlgoCore):
         self.corner_walls = [[0,13], [27,13]]
         
         # Primary turret defense positions
-        self.primary_turrets = [[1,12],[1,13],[2,12],[2,13],[3,13],[4,13],[5,13],[6,13],[7,12],[8,12],[9,12],[10,12],[11,12],[15,10],[16,11],[17,12],[18,12],[19,12],[20,12],[21,12],[22,12],[23,12],[24,12],[24,13],[25,12],[25,13],[26,12],[26,13], [12,12],[13,12],[14,11]]
+        self.primary_turrets = [[1,12],[1,13],[2,12],[2,13],[3,13],[4,13],[5,13],[6,13],[7,12],[8,11],[9,10],[10,11],[11,12],[15,12],[16,12],[17,12],[18,12],[19,12],[20,12],[21,12],[22,12],[23,12],[24,12],[24,13],[25,12],[25,13],[26,12],[26,13], [12,12],[13,12],[14,12]]
         
         # Secondary turret positions (build after primary complete)
         self.secondary_turrets = [[3,12],[24,11],[25,11]]
         
         # Support positions (build after all turrets complete)
-        self.support_positions = [[3,12],[4,12],[5,12],[6,12],[4,11]]
+        self.support_positions = [[6,12],[6,11],[5,10],[6,10],[10,9]]
         
         # Attack positions and blocking turret logic
-        self.scout_attack_position1 = [23,9]  # 3 scouts
-        self.scout_attack_position2 = [24,10]  # 12 scouts
+        self.scout_attack_position1 = [12,1]  # 3 scouts
+        self.scout_attack_position2 = [14,0]  # 12 scouts
         self.blocking_turret_position2 = [[1,13],[1,12],[2,12]]  # REMOVE during attack prep
-        
-        # Escalating attack wave system - increases by 2 MP after each attack
-        self.min_attack_mp = 13  # Starting threshold for first attack
-        self.attack_cycles_completed = 0  # Track number of completed attack cycles
 
     def on_turn(self, turn_state):
         """
@@ -108,6 +104,7 @@ class AlgoStrategy(gamelib.AlgoCore):
         """
         for location in self.corner_walls:
             wall_needs_attention = False
+            
             # Check if wall exists and its health
             if game_state.contains_stationary_unit(location):
                 units_at_location = game_state.game_map[location]
@@ -135,7 +132,6 @@ class AlgoStrategy(gamelib.AlgoCore):
                     if game_state.attempt_spawn(WALL, location):
                         gamelib.debug_write('Built corner wall at {}'.format(location))
                         # Instantly upgrade the wall
-                        game_state.attempt_spawn(WALL, location)
                         game_state.attempt_upgrade([location])
 
     def build_primary_and_secondary_turrets(self, game_state):
@@ -182,7 +178,7 @@ class AlgoStrategy(gamelib.AlgoCore):
             if game_state.contains_stationary_unit(location):
                 units_at_location = game_state.game_map[location]
                 for unit in units_at_location:
-                    if unit.player_index == 0 and unit.health < (unit.max_health * 0.5):
+                    if unit.player_index == 0 and unit.health < (unit.max_health * 0.3):
                         # Mark for removal - it will be rebuilt next turn in STEP 1
                         game_state.attempt_remove([location])
                         turrets_marked += 1
@@ -273,7 +269,7 @@ class AlgoStrategy(gamelib.AlgoCore):
         upgrades_made = 0
         
         # Priority order: closest to enemy front line first
-        priority_turret_positions = [[24,13], [25,13], [3,13], [2,13], [24,12], [25,12]]
+        priority_turret_positions = [[24,13], [25,12], [24,12], [3,13], [2,13]]
         
         # Upgrade priority turrets first
         for location in priority_turret_positions:
@@ -374,33 +370,28 @@ class AlgoStrategy(gamelib.AlgoCore):
 
     def execute_attack_strategy(self, game_state):
         """
-        Execute attack strategy: ESCALATING scout rush with increasing MP thresholds
+        Execute attack strategy: scout rush when ready
         """
         mp = int(game_state.get_resource(MP))  # Convert to integer to avoid float errors
         
-        # ESCALATING ATTACK SYSTEM: Check if we're ready for scout rush using dynamic threshold
-        # Threshold increases by +2 after each completed attack cycle
-        if mp >= self.min_attack_mp and not self.ready_for_scout_rush and not self.turret_removed_for_attack:
+        # Check if we're ready for scout rush (only when not in attack cycle)
+        if mp >= 13 and not self.ready_for_scout_rush and not self.turret_removed_for_attack:
             self.ready_for_scout_rush = True
-            gamelib.debug_write('🚀 ESCALATING SCOUT RUSH ACTIVATED! 🚀')
-            gamelib.debug_write('MP: {} >= Threshold: {} | Attack Cycle: {} | Expected Wave Size: ~{}-{} scouts'.format(
-                mp, self.min_attack_mp, self.attack_cycles_completed + 1, mp-2, mp+2))
-            gamelib.debug_write('ESCALATION HISTORY: Cycle 1(MP>=13) → Cycle 2(MP>=15) → Cycle 3(MP>=17) → Current(MP>={})'.format(
-                self.min_attack_mp))
+            gamelib.debug_write('Scout rush mode ACTIVATED - MP: {} (Starting new attack cycle)'.format(mp))
             
         if self.ready_for_scout_rush:
-            # Execute escalating scout rush sequence
-            self.execute_escalating_scout_rush(game_state)
+            # Execute scout rush sequence
+            self.execute_scout_rush(game_state)
 
-    def execute_escalating_scout_rush(self, game_state):
+    def execute_scout_rush(self, game_state):
         """
-        Execute the 3-phase ESCALATING scout rush with mandatory defense rebuilding
+        Execute the 3-phase scout rush with mandatory defense rebuilding
         """
         mp = int(game_state.get_resource(MP))  # Convert to integer to avoid float errors
         
-        # Phase 1: Setup blocking turrets (uses ESCALATING MP threshold)
-        if mp >= self.min_attack_mp and not self.turret_removed_for_attack:
-            # REMOVE all turrets in blocking_turret_position2 to clear attack path
+        # Phase 1: Setup blocking turrets (MP >= 15, preparation turn)
+        if mp >= 13 and not self.turret_removed_for_attack:
+            # REMOVE all turrets in blocking_turret_position2
             turrets_removed = 0
             for location in self.blocking_turret_position2:
                 if game_state.contains_stationary_unit(location):
@@ -411,42 +402,35 @@ class AlgoStrategy(gamelib.AlgoCore):
             # Set indicators - attack will happen NEXT turn
             self.turret_removed_for_attack = True
             self.attack_path_cleared = True
-            gamelib.debug_write('PHASE 1: ESCALATING ATTACK PREP COMPLETE (Cycle {})'.format(self.attack_cycles_completed + 1))
-            gamelib.debug_write('MP Threshold: {} | Turrets Removed: {} | MASSIVE scout wave incoming NEXT turn!'.format(
-                self.min_attack_mp, turrets_removed))
+            gamelib.debug_write('PHASE 1: Attack preparation complete - scout attack NEXT turn (Removed: {})'.format(turrets_removed))
             
             # DO NOT deploy scouts this turn - return immediately
             return
         
-        # Phase 2: Deploy ESCALATING scout attack (attack turn)
+        # Phase 2: Deploy scout attack (attack turn)
         elif self.attack_path_cleared and self.turret_removed_for_attack:
-            # Deploy scouts with LARGER waves based on higher MP threshold
+            # Deploy scouts
             available_mp = mp
-            
-            # Calculate wave sizes - more MP = bigger waves
-            wave1_scouts = min(5, available_mp)  # Base wave 1
+            wave1_scouts = 5
             remaining_mp_after_wave1 = available_mp - wave1_scouts
-            wave2_scouts = max(remaining_mp_after_wave1, 0)  # Use ALL remaining MP for wave 2
+            wave2_scouts = max(remaining_mp_after_wave1, 10)  # Ensure minimum scouts
             
             # Deploy Wave 1: scouts at position 1
             actual_wave1 = game_state.attempt_spawn(SCOUT, self.scout_attack_position1, wave1_scouts)
             
-            # Deploy Wave 2: remaining scouts at position 2 (THIS IS THE ESCALATING PART!)
+            # Deploy Wave 2: remaining scouts at position 2
             actual_wave2 = game_state.attempt_spawn(SCOUT, self.scout_attack_position2, wave2_scouts)
             
             total_deployed = actual_wave1 + actual_wave2
             
-            gamelib.debug_write('🌊 PHASE 2: ESCALATING WAVE DEPLOYED! 🌊')
-            gamelib.debug_write('Attack Cycle: {} | MP Used: {}/{} | Wave 1: {} scouts | Wave 2: {} scouts | TOTAL: {} SCOUTS'.format(
-                self.attack_cycles_completed + 1, available_mp, available_mp, actual_wave1, actual_wave2, total_deployed))
-            gamelib.debug_write('ESCALATION EFFECT: More MP = Bigger Waves! Next attack will need MP>={}'.format(
-                self.min_attack_mp + 2))
+            gamelib.debug_write('PHASE 2: Attack executed - {} scouts at {}, {} scouts at {} (Total: {})'.format(
+                actual_wave1, self.scout_attack_position1, actual_wave2, self.scout_attack_position2, total_deployed))
             
             # Set flag for mandatory rebuild next turn
             self.attack_path_cleared = False  # Attack is complete, prepare for rebuild
-            gamelib.debug_write('PHASE 2: Massive attack launched! Defenses will be rebuilt NEXT turn')
+            gamelib.debug_write('PHASE 2: Attack complete, defenses will be rebuilt NEXT turn')
         
-        # Phase 3: ALWAYS rebuild defenses AND increment escalation counter
+        # Phase 3: ALWAYS rebuild defenses (turn after attack)
         elif not self.attack_path_cleared and self.turret_removed_for_attack:
             # ALWAYS rebuild all turrets in blocking_turret_position2
             turrets_rebuilt = 0
@@ -457,23 +441,12 @@ class AlgoStrategy(gamelib.AlgoCore):
                         turrets_rebuilt += 1
                         gamelib.debug_write('PHASE 3: Rebuilt blocking turret at {}'.format(location))
             
-            # ESCALATION SYSTEM: Increase attack cycle counter and MP threshold
-            previous_threshold = self.min_attack_mp
-            self.attack_cycles_completed += 1
-            self.min_attack_mp += 2  # CRITICAL: Increase threshold by 2 for next attack
-            
-            # Reset attack mode indicators to normal defensive state
+            # ALWAYS reset all attack mode indicators to normal defensive state
             self.turret_removed_for_attack = False
             self.ready_for_scout_rush = False
             
-            gamelib.debug_write('📈 PHASE 3: ESCALATION SYSTEM ACTIVATED! 📈')
-            gamelib.debug_write('Attack Cycle {} COMPLETED | Turrets Rebuilt: {}'.format(
-                self.attack_cycles_completed, turrets_rebuilt))
-            gamelib.debug_write('ESCALATION: MP Threshold {} → {} (+2 increase)'.format(
-                previous_threshold, self.min_attack_mp))
-            gamelib.debug_write('NEXT ATTACK: Will need MP>={} for even LARGER wave!'.format(self.min_attack_mp))
-            gamelib.debug_write('PROGRESSION: Attack 1(MP>=13) → Attack 2(MP>=15) → Attack 3(MP>=17) → Attack 4(MP>=19)...')
-
+            gamelib.debug_write('PHASE 3: MANDATORY REBUILD complete - {} blocking turrets restored, all flags reset'.format(turrets_rebuilt))
+            gamelib.debug_write('PHASE 3: Ready for next attack cycle when MP >= 18')
 
     def on_action_frame(self, turn_string):
         """

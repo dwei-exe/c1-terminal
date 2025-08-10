@@ -58,8 +58,8 @@ class AlgoStrategy(gamelib.AlgoCore):
         self.support_positions = [[3,12],[4,12],[5,12],[6,12],[4,11]]
         
         # Attack positions and blocking turret logic
-        self.scout_attack_position1 = [23,9]  # 3 scouts
-        self.scout_attack_position2 = [24,10]  # 12 scouts
+        self.scout_attack_position1 = [12,1]  # 3 scouts
+        self.scout_attack_position2 = [14,0]  # 12 scouts
         self.blocking_turret_position2 = [[1,13],[1,12],[2,12]]  # REMOVE during attack prep
         
         # Escalating attack wave system - increases by 2 MP after each attack
@@ -382,11 +382,14 @@ class AlgoStrategy(gamelib.AlgoCore):
         # Threshold increases by +2 after each completed attack cycle
         if mp >= self.min_attack_mp and not self.ready_for_scout_rush and not self.turret_removed_for_attack:
             self.ready_for_scout_rush = True
-            gamelib.debug_write('🚀 ESCALATING SCOUT RUSH ACTIVATED! 🚀')
-            gamelib.debug_write('MP: {} >= Threshold: {} | Attack Cycle: {} | Expected Wave Size: ~{}-{} scouts'.format(
-                mp, self.min_attack_mp, self.attack_cycles_completed + 1, mp-2, mp+2))
-            gamelib.debug_write('ESCALATION HISTORY: Cycle 1(MP>=13) → Cycle 2(MP>=15) → Cycle 3(MP>=17) → Current(MP>={})'.format(
-                self.min_attack_mp))
+            expected_wave1 = 5 + (self.attack_cycles_completed * 2)
+            expected_total_min = expected_wave1 + (mp - expected_wave1)
+            gamelib.debug_write('🚀 DUAL ESCALATING SCOUT RUSH ACTIVATED! 🚀')
+            gamelib.debug_write('MP: {} >= Threshold: {} | Attack Cycle: {} | Wave 1: {} scouts | Total Wave: ~{} scouts'.format(
+                mp, self.min_attack_mp, self.attack_cycles_completed + 1, expected_wave1, expected_total_min))
+            gamelib.debug_write('DUAL ESCALATION: Wave 1 AND MP threshold both increase by +2 each cycle!')
+            gamelib.debug_write('PROGRESSION: Cycle 1(5+8scouts, MP>=13) → Cycle 2(7+8scouts, MP>=15) → Cycle 3(9+8scouts, MP>=17) → Current({}, MP>={})'.format(
+                expected_wave1, self.min_attack_mp))
             
         if self.ready_for_scout_rush:
             # Execute escalating scout rush sequence
@@ -420,11 +423,12 @@ class AlgoStrategy(gamelib.AlgoCore):
         
         # Phase 2: Deploy ESCALATING scout attack (attack turn)
         elif self.attack_path_cleared and self.turret_removed_for_attack:
-            # Deploy scouts with LARGER waves based on higher MP threshold
+            # Deploy scouts with ESCALATING wave sizes based on attack cycle progression
             available_mp = mp
             
-            # Calculate wave sizes - more MP = bigger waves
-            wave1_scouts = min(5, available_mp)  # Base wave 1
+            # ESCALATING WAVE 1: Increases by +2 scouts each attack cycle
+            base_wave1_size = 5 + (self.attack_cycles_completed * 2)  # 5, 7, 9, 11, 13...
+            wave1_scouts = min(base_wave1_size, available_mp)  # Don't exceed available MP
             remaining_mp_after_wave1 = available_mp - wave1_scouts
             wave2_scouts = max(remaining_mp_after_wave1, 0)  # Use ALL remaining MP for wave 2
             
@@ -436,11 +440,12 @@ class AlgoStrategy(gamelib.AlgoCore):
             
             total_deployed = actual_wave1 + actual_wave2
             
-            gamelib.debug_write('🌊 PHASE 2: ESCALATING WAVE DEPLOYED! 🌊')
-            gamelib.debug_write('Attack Cycle: {} | MP Used: {}/{} | Wave 1: {} scouts | Wave 2: {} scouts | TOTAL: {} SCOUTS'.format(
-                self.attack_cycles_completed + 1, available_mp, available_mp, actual_wave1, actual_wave2, total_deployed))
-            gamelib.debug_write('ESCALATION EFFECT: More MP = Bigger Waves! Next attack will need MP>={}'.format(
-                self.min_attack_mp + 2))
+            gamelib.debug_write('🌊 PHASE 2: DUAL ESCALATING WAVES DEPLOYED! 🌊')
+            gamelib.debug_write('Attack Cycle: {} | MP Used: {}/{} | Wave 1: {} scouts (Base: {}) | Wave 2: {} scouts | TOTAL: {} SCOUTS'.format(
+                self.attack_cycles_completed + 1, available_mp, available_mp, actual_wave1, base_wave1_size, actual_wave2, total_deployed))
+            gamelib.debug_write('DUAL ESCALATION: Wave 1 grows by +2 scouts, MP threshold +2 each cycle!')
+            gamelib.debug_write('NEXT ATTACK: Wave 1 will be {} scouts, MP threshold {}'.format(
+                base_wave1_size + 2, self.min_attack_mp + 2))
             
             # Set flag for mandatory rebuild next turn
             self.attack_path_cleared = False  # Attack is complete, prepare for rebuild
@@ -466,13 +471,14 @@ class AlgoStrategy(gamelib.AlgoCore):
             self.turret_removed_for_attack = False
             self.ready_for_scout_rush = False
             
-            gamelib.debug_write('📈 PHASE 3: ESCALATION SYSTEM ACTIVATED! 📈')
+            gamelib.debug_write('📈 PHASE 3: DUAL ESCALATION SYSTEM ACTIVATED! 📈')
             gamelib.debug_write('Attack Cycle {} COMPLETED | Turrets Rebuilt: {}'.format(
                 self.attack_cycles_completed, turrets_rebuilt))
-            gamelib.debug_write('ESCALATION: MP Threshold {} → {} (+2 increase)'.format(
-                previous_threshold, self.min_attack_mp))
-            gamelib.debug_write('NEXT ATTACK: Will need MP>={} for even LARGER wave!'.format(self.min_attack_mp))
-            gamelib.debug_write('PROGRESSION: Attack 1(MP>=13) → Attack 2(MP>=15) → Attack 3(MP>=17) → Attack 4(MP>=19)...')
+            gamelib.debug_write('DUAL ESCALATION: MP Threshold {} → {} (+2) | Next Wave 1: {} → {} scouts (+2)'.format(
+                previous_threshold, self.min_attack_mp, 5 + ((self.attack_cycles_completed-1) * 2), 5 + (self.attack_cycles_completed * 2)))
+            gamelib.debug_write('NEXT ATTACK: Will need MP>={} for Wave 1({} scouts) + Wave 2(remaining MP)'.format(
+                self.min_attack_mp, 5 + (self.attack_cycles_completed * 2)))
+            gamelib.debug_write('DUAL PROGRESSION: Cycle 1(5scouts+MP>=13) → Cycle 2(7scouts+MP>=15) → Cycle 3(9scouts+MP>=17) → Cycle 4(11scouts+MP>=19)...')
 
 
     def on_action_frame(self, turn_string):
