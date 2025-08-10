@@ -108,8 +108,6 @@ class AlgoStrategy(gamelib.AlgoCore):
         """
         for location in self.corner_walls:
             wall_needs_attention = False
-            if self.attack_path_cleared and location in self.blocking_turret_position2:
-                continue
             # Check if wall exists and its health
             if game_state.contains_stationary_unit(location):
                 units_at_location = game_state.game_map[location]
@@ -137,6 +135,7 @@ class AlgoStrategy(gamelib.AlgoCore):
                     if game_state.attempt_spawn(WALL, location):
                         gamelib.debug_write('Built corner wall at {}'.format(location))
                         # Instantly upgrade the wall
+                        game_state.attempt_spawn(WALL, location)
                         game_state.attempt_upgrade([location])
 
     def build_primary_and_secondary_turrets(self, game_state):
