@@ -49,17 +49,16 @@ class AlgoStrategy(gamelib.AlgoCore):
         self.corner_walls = [[0,13], [27,13]]
         
         # Primary turret defense positions
-        self.primary_turrets = [[1,12],[1,13],[2,12],[2,13],[3,13],[4,13],[5,13],[6,13],[7,12],[8,12],[9,12],[10,12],[11,12],[15,10],[16,11],[17,12],[18,12],[19,12],[20,12],[21,12],[22,12],[23,12],[24,12],[24,13],[25,12],[25,13],[26,12],[26,13], [12,12],[13,12],[14,11]]
-        
+        self.primary_turrets = [[1,12],[1,13],[2,12],[2,13],[3,12],[3,13],[4,12],[4,13],[5,13],[6,13],[7,13],[8,13],[9,13],[10,13],[11,13],[12,13],[13,13],[14,13],[15,13],[16,13],[17,13],[18,13],[19,13],[20,13],[21,13],[22,13],[23,13],[24,11],[24,12],[24,13],[25,11],[25,12],[25,13],[26,12],[26,13]]
         # Secondary turret positions (build after primary complete)
-        self.secondary_turrets = [[3,12],[24,11],[25,11]]
+        self.secondary_turrets = []
         
         # Support positions (build after all turrets complete)
-        self.support_positions = [[3,12],[4,12],[5,12],[6,12],[4,11]]
+        self.support_positions = [[5,12],[6,12],[7,12],[8,12],[9,12],[10,12]]
         
         # Attack positions and blocking turret logic
-        self.scout_attack_position1 = [23,9]  # 3 scouts
-        self.scout_attack_position2 = [24,10]  # 12 scouts
+        self.scout_attack_position1 = [12,1]  # 3 scouts
+        self.scout_attack_position2 = [14,0]  # 12 scouts
         self.blocking_turret_position2 = [[1,13],[1,12],[2,12]]  # REMOVE during attack prep
         
         # Escalating attack wave system - increases by 2 MP after each attack
@@ -273,7 +272,7 @@ class AlgoStrategy(gamelib.AlgoCore):
         upgrades_made = 0
         
         # Priority order: closest to enemy front line first
-        priority_turret_positions = [[24,13], [25,13], [3,13], [2,13], [24,12], [25,12]]
+        priority_turret_positions = [[24,13], [3,13], [24,12], [3,12]]
         
         # Upgrade priority turrets first
         for location in priority_turret_positions:
