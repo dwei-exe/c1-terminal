@@ -9,6 +9,7 @@ As described by Correlation One, Terminal is an AI game where you can compete by
 The final submitted algorithm can be found in the beta-2-5-13 folder under dwei.exe folder.
 
 Each of our team member's submissions will appear in our respective folders.
+
 |———— dwei.exe  
 |———— ng-333  
 |———— nithinRavikumar  
